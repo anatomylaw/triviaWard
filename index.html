@@ -709,11 +709,15 @@ function drawQuestionPanel() {
   const answerFont = isPhone ? 15 : 17;
   const answerLine = isPhone ? 14 : 16;
 
-  const answersTop = y + outerPad + topBoxH + 10;
-  const answersBottom = y + h - outerPad - 10;
+  // Compute a single gap 'g' so that top gap, between gaps, and bottom gap are equal
   const totalBoxesHeight = boxH * 4;
-  let gapBetween = (answersBottom - answersTop - totalBoxesHeight) / 3;
-  gapBetween = Math.max(minGapBetween, Math.min(isPhone ? 10 : 12, gapBetween));
+  const totalAvailable = h - outerPad * 2 - topBoxH; // space for boxes + 5 equal gaps
+  let g = (totalAvailable - totalBoxesHeight) / 5;
+  const maxGap = isPhone ? 10 : 12;
+  g = Math.max(minGapBetween, Math.min(maxGap, g));
+
+  const answersTop = y + outerPad + topBoxH + g;
+  const gapBetween = g;
 
   ctx.fillStyle = 'rgba(116,112,102,0.94)';
   roundRect(ctx, x, y, w, h, 24);
@@ -842,28 +846,31 @@ function render() {
       const msgSize = isPhone ? 18 : 26;
       const subSize = isPhone ? 15 : 20;
 
-      // ANSWER TEXT (higher)
+      // center block vertically
+      const centerY = vh * 0.5;
+
+      // ANSWER TEXT (centered)
       wrappedText(
         state.feedback,
-        vw * 0.1,
-        vh * 0.45,
-        vw * 0.8,
+        vw * 0.5,
+        centerY - 20,
+        vw * 0.7,
         26,
         state.feedbackType === 'good' ? '#93e070' : '#ff7979',
         msgSize,
-        'left'
+        'center'
       );
 
-      // CLICK TEXT (lower, clearly separated)
+      // CLICK TEXT (closer + centered)
       wrappedText(
         'CLICK TO LOAD NEXT QUESTION',
-        vw * 0.1,
-        vh * 0.65,
-        vw * 0.8,
-        24,
+        vw * 0.5,
+        centerY + 24,
+        vw * 0.7,
+        22,
         '#fff6d8',
         subSize,
-        'left'
+        'center'
       );
     } else {
       drawQuestionPanel();
