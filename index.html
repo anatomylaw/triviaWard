@@ -40,8 +40,24 @@
 */
 const CONFIG = {
   backgroundImage: './background.png',
-  nextQuestionDelayMs: 1600
+  nextQuestionDelayMs: 1600,
+  requestTimeoutMs: 3500
 };
+
+const LOCAL_QUESTION_PACK = [
+  { q:'WHICH PLANET IS KNOWN AS THE RED PLANET?', choices:['Mars','Venus','Jupiter','Mercury'], answer:0, source:'Local Pack', topic:'Science', level:'easy' },
+  { q:'WHO WAS THE KING OF THE GODS IN GREEK MYTHOLOGY?', choices:['Zeus','Apollo','Hermes','Ares'], answer:0, source:'Local Pack', topic:'Mythology', level:'easy' },
+  { q:'WHAT IS THE CAPITAL OF CANADA?', choices:['Toronto','Ottawa','Vancouver','Montreal'], answer:1, source:'Local Pack', topic:'Geography', level:'easy' },
+  { q:'HOW MANY DEGREES ARE IN A TRIANGLE?', choices:['90','180','270','360'], answer:1, source:'Local Pack', topic:'Geometry', level:'easy' },
+  { q:'WHO PAINTED THE MONA LISA?', choices:['Michelangelo','Raphael','Leonardo da Vinci','Donatello'], answer:2, source:'Local Pack', topic:'Art', level:'easy' },
+  { q:'WHICH OCEAN IS THE LARGEST?', choices:['Atlantic','Indian','Arctic','Pacific'], answer:3, source:'Local Pack', topic:'Geography', level:'easy' },
+  { q:'WHO WROTE ROMEO AND JULIET?', choices:['Shakespeare','Dickens','Homer','Tolstoy'], answer:0, source:'Local Pack', topic:'Literature', level:'easy' },
+  { q:'WHICH COUNTRY WON THE FIRST FIFA WORLD CUP?', choices:['Brazil','Uruguay','Italy','Argentina'], answer:1, source:'Local Pack', topic:'Soccer', level:'medium' },
+  { q:'WHAT GAS DO PLANTS ABSORB FROM THE ATMOSPHERE?', choices:['Oxygen','Nitrogen','Carbon Dioxide','Hydrogen'], answer:2, source:'Local Pack', topic:'Science', level:'easy' },
+  { q:'WHICH ANCIENT WONDER STOOD AT GIZA?', choices:['Hanging Gardens','Great Pyramid','Colossus of Rhodes','Temple of Artemis'], answer:1, source:'Local Pack', topic:'History', level:'easy' },
+  { q:'WHAT IS THE CAPITAL OF AUSTRALIA?', choices:['Sydney','Melbourne','Canberra','Perth'], answer:2, source:'Local Pack', topic:'Geography', level:'easy' },
+  { q:'WHO WAS ODYSSEUS TRYING TO RETURN HOME TO?', choices:['Athens','Sparta','Ithaca','Troy'], answer:2, source:'Local Pack', topic:'Mythology', level:'medium' }
+];
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const restartBtn = document.getElementById('restartBtn');
@@ -228,7 +244,10 @@ function buildBalancedQuestionPool(questions) {
 
 async function fetchJson(url) {
   try {
-    const res = await fetch(url, { cache:'no-store' });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), CONFIG.requestTimeoutMs);
+    const res = await fetch(url, { cache:'no-store', signal: controller.signal });
+    clearTimeout(timer);
     return res.ok ? await res.json() : null;
   } catch { return null; }
 }
@@ -255,8 +274,11 @@ async function fetchGitHubTrivia() {
 }
 async function fetchOpenTDBCategory(category, amount = 6) {
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), CONFIG.requestTimeoutMs);
     const url = `https://opentdb.com/api.php?amount=${amount}&category=${category}&type=multiple`;
-    const res = await fetch(url, { cache:'no-store' });
+    const res = await fetch(url, { cache:'no-store', signal: controller.signal });
+    clearTimeout(timer);
     if (!res.ok) return [];
     const data = await res.json();
     if (!Array.isArray(data.results)) return [];
@@ -277,7 +299,10 @@ async function fetchOpenTDBBatch() {
 async function fetchTriviaApi() {
   try {
     const isPhone = canvas.clientWidth <= 430;
-    const res = await fetch(`https://the-trivia-api.com/v2/questions?limit=${isPhone ? 10 : 18}`, { cache:'no-store' });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), CONFIG.requestTimeoutMs);
+    const res = await fetch(`https://the-trivia-api.com/v2/questions?limit=${isPhone ? 10 : 18}`, { cache:'no-store', signal: controller.signal });
+    clearTimeout(timer);
     if (!res.ok) return [];
     const data = await res.json();
     if (!Array.isArray(data)) return [];
@@ -295,7 +320,10 @@ async function fetchWikipediaBatch() {
   const questions = [];
   await Promise.all(picked.map(async page => {
     try {
-      const res = await fetch('https://en.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(page), { cache:'no-store' });
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), CONFIG.requestTimeoutMs);
+      const res = await fetch('https://en.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(page), { cache:'no-store', signal: controller.signal });
+      clearTimeout(timer);
       if (!res.ok) return;
       const data = await res.json();
       if (!data.title || !data.extract) return;
@@ -311,41 +339,7 @@ async function fetchWikipediaBatch() {
   return questions;
 }
 async function fetchWikiCurrentEventsBatch() {
-  const isPhone = canvas.clientWidth <= 430;
-  const feeds = isPhone ? ['https://feeds.bbci.co.uk/news/world/rss.xml'] : ['https://feeds.bbci.co.uk/news/world/rss.xml','https://feeds.bbci.co.uk/news/politics/rss.xml'];
-  try {
-    const xmlTexts = await Promise.all(feeds.map(async url => {
-      try { const r = await fetch(url, { cache:'no-store' }); return r.ok ? await r.text() : ''; }
-      catch { return ''; }
-    }));
-    const parser = new DOMParser();
-    const headlines = [];
-    for (const xml of xmlTexts) {
-      if (!xml) continue;
-      const doc = parser.parseFromString(xml, 'text/xml');
-      const items = Array.from(doc.querySelectorAll('item > title')).map(n => decodeHTML(n.textContent || '').trim());
-      for (let title of items) {
-        if (!title) continue;
-        const cut = title.indexOf(' - BBC');
-        if (cut !== -1) title = title.slice(0, cut).trim();
-        if (title.length >= 28 && title.length <= 110) headlines.push(title);
-      }
-    }
-    const unique = Array.from(new Set(headlines)).slice(0, isPhone ? 4 : 8);
-    const out = [];
-    for (const title of unique) {
-      const lower = title.toLowerCase();
-      let question = null, correct = null, distractors = null;
-      if (lower.includes('election') || lower.includes('vote') || lower.includes('poll')) { question='THIS HEADLINE IS MOST LIKELY ABOUT WHAT KIND OF EVENT: ' + title.toUpperCase() + '?'; correct='Politics or elections'; distractors=['Art exhibition','Astronomy','Wildlife migration']; }
-      else if (lower.includes('king') || lower.includes('queen') || lower.includes('prince') || lower.includes('palace') || lower.includes('royal')) { question='THIS HEADLINE MOST LIKELY RELATES TO WHICH TOPIC: ' + title.toUpperCase() + '?'; correct='Royal affairs'; distractors=['Geometry','Volcanoes','Chess']; }
-      else if (lower.includes('war') || lower.includes('missile') || lower.includes('attack') || lower.includes('troops') || lower.includes('ceasefire')) { question='THIS HEADLINE MOST DIRECTLY CONCERNS WHAT: ' + title.toUpperCase() + '?'; correct='Conflict or security'; distractors=['Museum curation','Algebra','Classical music']; }
-      else if (lower.includes('economy') || lower.includes('inflation') || lower.includes('market') || lower.includes('trade') || lower.includes('tariff')) { question='THIS HEADLINE IS MOST CLOSELY RELATED TO WHICH AREA: ' + title.toUpperCase() + '?'; correct='Economics'; distractors=['Mythology','Painting','Cartography']; }
-      if (!question) continue;
-      const choices = shuffleArray([correct, ...distractors]);
-      out.push({ q:question, choices, answer:choices.indexOf(correct), source:'News Headlines', topic:correct, level:'medium' });
-    }
-    return out;
-  } catch { return []; }
+  return [];
 }
 
 async function refreshQuestionPool() {
@@ -371,7 +365,7 @@ async function refreshQuestionPool() {
     const [githubBatch, otdbBatch, triviaApiBatch, wikiBatch, currentBatch] = await Promise.allSettled([
       fetchGitHubTrivia(), fetchOpenTDBBatch(), fetchTriviaApi(), fetchWikipediaBatch(), fetchWikiCurrentEventsBatch()
     ]);
-    const combined = [];
+    const combined = [...LOCAL_QUESTION_PACK, ...LOCAL_QUESTION_PACK.slice(0, 6)];
     if (githubBatch.status === 'fulfilled') combined.push(...githubBatch.value, ...githubBatch.value.slice(0, 10));
     if (otdbBatch.status === 'fulfilled') combined.push(...otdbBatch.value, ...otdbBatch.value.slice(0, 10));
     if (triviaApiBatch.status === 'fulfilled') combined.push(...triviaApiBatch.value, ...triviaApiBatch.value.slice(0, 8));
@@ -756,15 +750,15 @@ function frame(ts) {
 }
 
 async function boot() {
+  requestAnimationFrame(frame);
   try { await resetGame(); }
   catch (e) {
     console.error(e);
     state.currentQuestion = null;
-    state.feedback = 'NO LIVE QUESTIONS AVAILABLE. PRESS R TO RETRY.';
+    state.feedback = 'NO LIVE QUESTIONS AVAILABLE. PRESS RESTART.';
     state.feedbackType = 'bad';
     state.loadingQuestions = false;
   }
-  requestAnimationFrame(frame);
 }
 boot();
 </script>
