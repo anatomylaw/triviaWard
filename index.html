@@ -490,7 +490,7 @@ function applyOutcome(correct) {
     s.temp = clamp(s.temp + (s.temp > 98.6 ? -0.8 : 0.4), 94, 106);
     s.pulse = clamp(s.pulse + (s.pulse > 72 ? -9 : 5), 35, 170);
     state.score += 100;
-    state.feedback = 'TRUE. CORRECT ANSWER: ' + state.correctAnswerText;
+    state.feedback = 'TRUE. CORRECT ANSWER: ' + state.correctAnswerText + ' — CLICK TO CONTINUE';
     state.feedbackType = 'good';
     if (state.streak >= 10) {
       state.gameOver = true;
@@ -505,27 +505,17 @@ function applyOutcome(correct) {
     s.pressure = clamp(s.pressure + (8 + Math.random() * 10), 70, 170);
     s.temp = clamp(s.temp + (0.5 + Math.random() * 0.8), 94, 106);
     s.pulse = clamp(s.pulse + (8 + Math.random() * 9), 35, 170);
-    state.feedback = 'FALSE. CORRECT ANSWER: ' + state.correctAnswerText;
+    state.feedback = 'FALSE. CORRECT ANSWER: ' + state.correctAnswerText + ' — CLICK TO CONTINUE';
     state.feedbackType = 'bad';
     state.shake = 0.45;
     if (state.wrongCount >= 10) {
       state.gameOver = true;
       state.win = false;
-      state.feedback = 'TOO MANY ERRORS. THE PATIENT FLATLINED.';
+      state.feedback = 'CODE RED — CALL A NURSE IMMEDIATELY.';
       return;
     }
   }
   state.answered = true;
-  const thisRound = state.roundId;
-  if (state.pendingNextTimeout) clearTimeout(state.pendingNextTimeout);
-  // start transition screen
-  state.transition = true;
-  state.transitionEnd = Date.now() + 3000;
-
-  // removed auto-advance; waiting for user click
-      state.transition = false;
-    }
-  }, 3000);
 }
 function handleAnswer(index) {
   if (state.gameOver || state.answered || !state.currentQuestion || state.loadingQuestions) return;
@@ -555,8 +545,6 @@ function handlePointer(x, y) {
       handleAnswer(a.index);
       break;
     }
-  }
-}
   }
 }
 canvas.addEventListener('pointerdown', e => {
@@ -658,7 +646,7 @@ function drawQuestionPanel() {
   roundRect(ctx, x + 12, y + 14, w - 24, topBoxH, 16); ctx.fill(); ctx.stroke();
 
   if (state.loadingQuestions && state.answered) wrappedText('CLICK TO LOAD NEXT QUESTION...', x + qPad, y + 40, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
-  else if (state.loadingQuestions) wrappedText('LOADING CURRENT QUESTIONS...', x + qPad, y + 40, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');, x + qPad, y + 40, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
+  else if (state.loadingQuestions) wrappedText('LOADING CURRENT QUESTIONS...', x + qPad, y + 40, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
   else if (state.currentQuestion) wrappedText(state.currentQuestion.prompt, x + qPad, y + 40, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
   else wrappedText(state.feedback, x + qPad, y + 40, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
 
