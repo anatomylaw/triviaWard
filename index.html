@@ -60,6 +60,7 @@ const LOCAL_QUESTION_PACK = [
 ];
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
+ctx.textBaseline = 'alphabetic';
 const restartBtn = document.getElementById('restartBtn');
 
 function resize() {
@@ -194,7 +195,7 @@ const state = {
   shake:0, tick:0, clickableAnswers:[], questionPool:[], usedQuestions:new Set(), sessionUsedQuestions:new Set(),
   longSessionUsedQuestions:new Set(), gamesPlayed:0, loadingQuestions:false, sourceLabel:'DATABASE-HEAVY MIX',
   currentSource:'', pendingNextTimeout:null, roundId:0, cachedPool:[], cacheTime:0,
-  transition:false, transitionEnd:0
+  transition:false, transitionEnd:0, fatalError:''
 };
 
 const bgImg = new Image();
@@ -406,6 +407,7 @@ async function refreshQuestionPool() {
 
 async function nextQuestion() {
   if (state.loadingQuestions) return;
+  state.transition = false;
   if (state.questionPool.length === 0) await refreshQuestionPool();
   if (state.questionPool.length === 0) {
     state.currentQuestion = null;
@@ -490,7 +492,7 @@ function applyOutcome(correct) {
     s.temp = clamp(s.temp + (s.temp > 98.6 ? -0.8 : 0.4), 94, 106);
     s.pulse = clamp(s.pulse + (s.pulse > 72 ? -9 : 5), 35, 170);
     state.score += 100;
-    state.feedback = 'TRUE. CORRECT ANSWER: ' + state.correctAnswerText + ' — CLICK TO CONTINUE';
+    state.feedback = 'TRUE. CORRECT ANSWER: ' + state.correctAnswerText;
     state.feedbackType = 'good';
     if (state.streak >= 10) {
       state.gameOver = true;
@@ -505,7 +507,7 @@ function applyOutcome(correct) {
     s.pressure = clamp(s.pressure + (8 + Math.random() * 10), 70, 170);
     s.temp = clamp(s.temp + (0.5 + Math.random() * 0.8), 94, 106);
     s.pulse = clamp(s.pulse + (8 + Math.random() * 9), 35, 170);
-    state.feedback = 'FALSE. CORRECT ANSWER: ' + state.correctAnswerText + ' — CLICK TO CONTINUE';
+    state.feedback = 'FALSE. CORRECT ANSWER: ' + state.correctAnswerText;
     state.feedbackType = 'bad';
     state.shake = 0.45;
     if (state.wrongCount >= 10) {
@@ -516,6 +518,7 @@ function applyOutcome(correct) {
     }
   }
   state.answered = true;
+  state.transition = true;
 }
 function handleAnswer(index) {
   if (state.gameOver || state.answered || !state.currentQuestion || state.loadingQuestions) return;
@@ -535,8 +538,16 @@ window.addEventListener('keydown', e => {
 restartBtn.addEventListener('click', () => {
   resetGame();
 });
+window.addEventListener('error', (event) => {
+  state.fatalError = event && event.message ? event.message : 'UNKNOWN ERROR';
+  console.error(event);
+});
+window.addEventListener('unhandledrejection', (event) => {
+  state.fatalError = event && event.reason ? String(event.reason) : 'PROMISE ERROR';
+  console.error(event);
+});
 function handlePointer(x, y) {
-  if (state.answered && !state.gameOver) {
+  if (state.transition && state.answered && !state.gameOver) {
     nextQuestion();
     return;
   }
@@ -624,6 +635,7 @@ function getLayout() {
 }
 
 function drawQuestionPanel() {
+  if (state.transition) return;
   const layout = getLayout();
   const { isPhone, w, x, qY: y, qH: h } = layout;
   const qPad = isPhone ? 24 : 38;
@@ -645,8 +657,7 @@ function drawQuestionPanel() {
   ctx.fillStyle = '#252923';
   roundRect(ctx, x + 12, y + 14, w - 24, topBoxH, 16); ctx.fill(); ctx.stroke();
 
-  if (state.loadingQuestions && state.answered) wrappedText('CLICK TO LOAD NEXT QUESTION...', x + qPad, y + 40, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
-  else if (state.loadingQuestions) wrappedText('LOADING CURRENT QUESTIONS...', x + qPad, y + 40, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
+  if (state.loadingQuestions) wrappedText('LOADING CURRENT QUESTIONS...', x + qPad, y + 40, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
   else if (state.currentQuestion) wrappedText(state.currentQuestion.prompt, x + qPad, y + 40, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
   else wrappedText(state.feedback, x + qPad, y + 40, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
 
@@ -663,15 +674,9 @@ function drawQuestionPanel() {
     if (choices[i] && typeof choices[i].correct === 'boolean') state.clickableAnswers.push({ x:x + 12, y:ay, w:w - 24, h:boxH, index:i });
   }
 
-  let fill = state.feedbackType === 'good' ? '#93e070' : state.feedbackType === 'bad' ? '#ff7979' : '#f2df97';
-  if (state.answered && state.loadingQuestions) {
-    state.feedback = (state.feedback.includes('TRUE') ? 'TRUE. ' : 'FALSE. ') + 'CORRECT ANSWER: ' + state.correctAnswerText + ' — CLICK TO CONTINUE';
-  }
-  if (isPhone) {
-    wrappedText(state.feedback, x + 18, y + h - 34, w - 36, 14, fill, feedbackFont, 'left');
-  } else {
-    wrappedText(state.feedback, x + 20, y + h - 16, w - 40, 18, fill, feedbackFont, 'left');
-  }
+  const fill = state.feedbackType === 'good' ? '#93e070' : state.feedbackType === 'bad' ? '#ff7979' : '#f2df97';
+  if (isPhone) wrappedText(state.feedback, x + 18, y + h - 34, w - 36, 14, fill, feedbackFont, 'left');
+  else wrappedText(state.feedback, x + 20, y + h - 16, w - 40, 18, fill, feedbackFont, 'left');
 }
 
 function barFillRatio(def, v) { return (v - def.min) / (def.max - def.min); }
@@ -681,6 +686,7 @@ function statDisplay(def, v) {
   return `${Math.round(v)}${def.unit}`;
 }
 function drawStatsPanel() {
+  if (state.transition) return;
   const layout = getLayout();
   const { isPhone, w, x, sY: y, sH: h } = layout;
 
@@ -732,20 +738,34 @@ function drawOverlay() {
 function update(dt) { state.tick += dt; state.shake = Math.max(0, state.shake - dt); }
 function render() {
   const vw = canvas.clientWidth, vh = canvas.clientHeight;
-  const shakeX = state.shake > 0 ? (Math.random() - 0.5) * 14 * state.shake : 0;
-  const shakeY = state.shake > 0 ? (Math.random() - 0.5) * 12 * state.shake : 0;
-  ctx.clearRect(0, 0, vw, vh);
-  ctx.save();
-  ctx.translate(shakeX, shakeY);
-  drawBackground();
-
-  // show only background during transition
-  
-  drawQuestionPanel();
-  drawStatsPanel();
-  ctx.restore();
-  drawOverlay();
-  if (bgFailed) outlineText('BACKGROUND IMAGE NOT FOUND', 20, 34, '#ff8a8a', 18, 'left');
+  try {
+    const shakeX = state.shake > 0 ? (Math.random() - 0.5) * 14 * state.shake : 0;
+    const shakeY = state.shake > 0 ? (Math.random() - 0.5) * 12 * state.shake : 0;
+    ctx.clearRect(0, 0, vw, vh);
+    ctx.save();
+    ctx.translate(shakeX, shakeY);
+    drawBackground();
+    if (state.transition) {
+      const msgSize = canvas.clientWidth <= 430 ? 18 : 24;
+      const subSize = canvas.clientWidth <= 430 ? 16 : 20;
+      wrappedText(state.feedback, vw * 0.1, vh * 0.5 - 8, vw * 0.8, 24, state.feedbackType === 'good' ? '#93e070' : '#ff7979', msgSize, 'left');
+      wrappedText('CLICK TO LOAD NEXT QUESTION', vw * 0.1, vh * 0.5 + 28, vw * 0.8, 22, '#fff6d8', subSize, 'left');
+    } else {
+      drawQuestionPanel();
+      drawStatsPanel();
+    }
+    ctx.restore();
+    drawOverlay();
+    if (bgFailed) outlineText('BACKGROUND IMAGE NOT FOUND', 20, 34, '#ff8a8a', 18, 'left');
+    if (state.fatalError) outlineText('ERROR MODE ACTIVE', 20, vh - 20, '#ff9d9d', 16, 'left');
+  } catch (err) {
+    console.error(err);
+    state.fatalError = String(err && err.message ? err.message : err);
+    ctx.clearRect(0, 0, vw, vh);
+    drawBackground();
+    wrappedText('GAME ERROR', vw * 0.1, vh * 0.45, vw * 0.8, 28, '#ff7979', 28, 'left');
+    wrappedText('PRESS RESTART TO TRY AGAIN', vw * 0.1, vh * 0.45 + 42, vw * 0.8, 22, '#fff6d8', 18, 'left');
+  }
 }
 function frame(ts) {
   const dt = Math.min(0.033, ((ts - (frame.last || ts)) / 1000) || 0.016);
