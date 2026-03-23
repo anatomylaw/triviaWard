@@ -456,6 +456,8 @@ async function resetGame() {
   state.wrongCount = 0;
   state.currentQuestion = null;
   state.correctAnswerText = '';
+  state.transition = false;
+  state.fatalError = '';
   state.feedback = 'LOADING LIVE QUESTIONS...';
   state.feedbackType = 'neutral';
   state.answered = false;
@@ -546,6 +548,7 @@ function handlePointer(x, y) {
     resetGame();
     return;
   }
+  if (state.loadingQuestions) return;
   if (state.transition && state.answered) {
     nextQuestion();
     return;
@@ -613,35 +616,66 @@ function drawBackground() {
   } else drawFallbackBackground();
 }
 
+function getQuestionMetrics(isPhone, panelWidth) {
+  const qPad = isPhone ? 22 : 34;
+  const qFont = isPhone ? 16 : 21;
+  const qLine = isPhone ? 18 : 22;
+  const outerPad = isPhone ? 12 : 14;
+  const topBoxMinH = isPhone ? 86 : 96;
+  const maxTextWidth = panelWidth - qPad * 2;
+  const text = state.currentQuestion ? state.currentQuestion.prompt : (state.loadingQuestions ? 'LOADING...' : '');
+
+  ctx.font = `${qFont}px Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`;
+  const words = String(text).split(' ');
+  let line = '';
+  let lines = 0;
+  for (const word of words) {
+    const test = line ? line + ' ' + word : word;
+    if (ctx.measureText(test).width > maxTextWidth && line) {
+      lines += 1;
+      line = word;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines += 1;
+  const textBlockH = Math.max(qLine, lines * qLine);
+  const topBoxH = Math.max(topBoxMinH, outerPad + 14 + textBlockH + 16);
+
+  return { qPad, qFont, qLine, outerPad, topBoxH };
+}
+
 function getLayout() {
   const isPhone = canvas.clientWidth <= 430;
   const panelWidth = isPhone ? canvas.clientWidth - 20 : Math.min(720, canvas.clientWidth * 0.6);
   const topMargin = isPhone ? 10 : Math.max(12, canvas.clientHeight * 0.04);
   const gap = isPhone ? 10 : 12;
-
   const bottomSafe = isPhone ? 14 : 16;
   const available = Math.max(260, canvas.clientHeight - topMargin - bottomSafe - gap);
 
-  // Keep both panels visible with no overlap.
-  let questionHeight = Math.round(available * (isPhone ? 0.68 : 0.66));
-  let statsHeight = available - questionHeight;
-
-  const minQuestion = isPhone ? 300 : 320;
+  const { outerPad, topBoxH } = getQuestionMetrics(isPhone, panelWidth);
+  const boxH = isPhone ? 50 : 52;
+  const minGapBetween = isPhone ? 6 : 8;
+  const answersBlockH = boxH * 4 + minGapBetween * 3;
+  const feedbackReserve = 0;
+  const minQuestion = outerPad * 2 + topBoxH + 10 + answersBlockH + 10 + feedbackReserve;
   const minStats = isPhone ? 118 : 126;
 
-  if (questionHeight < minQuestion) questionHeight = minQuestion;
-  if (statsHeight < minStats) statsHeight = minStats;
+  // Slightly increase stats panel share
+  let questionHeight = Math.max(minQuestion, Math.round(available * (isPhone ? 0.64 : 0.62)));
+  let statsHeight = Math.max(minStats + 10, available - questionHeight);
 
   if (questionHeight + statsHeight > available) {
     const overflow = questionHeight + statsHeight - available;
-    questionHeight = Math.max(minQuestion, questionHeight - overflow);
-  }
-  if (questionHeight + statsHeight > available) {
-    const overflow = questionHeight + statsHeight - available;
-    statsHeight = Math.max(minStats, statsHeight - overflow);
+    if (statsHeight - overflow >= minStats) {
+      statsHeight -= overflow;
+    } else {
+      const remaining = overflow - (statsHeight - minStats);
+      statsHeight = minStats;
+      questionHeight = Math.max(minQuestion, questionHeight - remaining);
+    }
   }
 
-  // Final safety clamp.
   if (questionHeight + statsHeight > available) {
     questionHeight = Math.max(minQuestion, available - minStats);
     statsHeight = Math.max(minStats, available - questionHeight);
@@ -659,28 +693,27 @@ function getLayout() {
     qH: questionHeight,
     sY,
     sH: statsHeight,
-    gap
+    gap,
+    metrics: { outerPad, topBoxH, boxH, minGapBetween }
   };
 }
 
 function drawQuestionPanel() {
   if (state.transition) return;
   const layout = getLayout();
-  const { isPhone, w, x, qY: y, qH: h } = layout;
+  const { isPhone, w, x, qY: y, qH: h, metrics } = layout;
+  const { outerPad, topBoxH, boxH, minGapBetween } = metrics;
   const qPad = isPhone ? 22 : 34;
   const qFont = isPhone ? 16 : 21;
   const qLine = isPhone ? 18 : 22;
   const answerFont = isPhone ? 15 : 17;
   const answerLine = isPhone ? 14 : 16;
-  const feedbackFont = isPhone ? 12 : 16;
-  const outerPad = isPhone ? 12 : 14;
-  const topBoxH = isPhone ? 86 : 96;
-  const boxH = isPhone ? 50 : 52;
+
   const answersTop = y + outerPad + topBoxH + 10;
-  const answersBottom = y + h - outerPad - 10; // match top spacing for symmetry
+  const answersBottom = y + h - outerPad - 10;
   const totalBoxesHeight = boxH * 4;
   let gapBetween = (answersBottom - answersTop - totalBoxesHeight) / 3;
-  gapBetween = Math.max(isPhone ? 6 : 8, Math.min(isPhone ? 10 : 12, gapBetween));
+  gapBetween = Math.max(minGapBetween, Math.min(isPhone ? 10 : 12, gapBetween));
 
   ctx.fillStyle = 'rgba(116,112,102,0.94)';
   roundRect(ctx, x, y, w, h, 24);
@@ -694,10 +727,11 @@ function drawQuestionPanel() {
   ctx.fill();
   ctx.stroke();
 
+  const questionTextY = y + outerPad + 26;
   if (state.loadingQuestions) {
-    wrappedText('LOADING...', x + qPad, y + outerPad + 26, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
+    wrappedText('LOADING...', x + qPad, questionTextY, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
   } else if (state.currentQuestion) {
-    wrappedText(state.currentQuestion.prompt, x + qPad, y + outerPad + 26, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
+    wrappedText(state.currentQuestion.prompt, x + qPad, questionTextY, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
   }
 
   state.clickableAnswers = [];
@@ -720,11 +754,6 @@ function drawQuestionPanel() {
     if (choices[i] && typeof choices[i].correct === 'boolean') {
       state.clickableAnswers.push({ x: x + outerPad, y: ay, w: w - outerPad * 2, h: boxH, index: i });
     }
-  }
-
-  if (state.feedback) {
-    const fill = state.feedbackType === 'good' ? '#93e070' : state.feedbackType === 'bad' ? '#ff7979' : '#f2df97';
-    wrappedText(state.feedback, x + qPad, y + h - 8, w - qPad * 2, 14, fill, feedbackFont, 'left');
   }
 }
 
