@@ -193,7 +193,8 @@ const state = {
   feedback:'LOADING LIVE QUESTIONS...', feedbackType:'neutral', answered:false, gameOver:false, win:false,
   shake:0, tick:0, clickableAnswers:[], questionPool:[], usedQuestions:new Set(), sessionUsedQuestions:new Set(),
   longSessionUsedQuestions:new Set(), gamesPlayed:0, loadingQuestions:false, sourceLabel:'DATABASE-HEAVY MIX',
-  currentSource:'', pendingNextTimeout:null, roundId:0, cachedPool:[], cacheTime:0
+  currentSource:'', pendingNextTimeout:null, roundId:0, cachedPool:[], cacheTime:0,
+  transition:false, transitionEnd:0
 };
 
 const bgImg = new Image();
@@ -517,10 +518,17 @@ function applyOutcome(correct) {
   state.answered = true;
   const thisRound = state.roundId;
   if (state.pendingNextTimeout) clearTimeout(state.pendingNextTimeout);
+  // start transition screen
+  state.transition = true;
+  state.transitionEnd = Date.now() + 3000;
+
   state.pendingNextTimeout = setTimeout(() => {
     state.pendingNextTimeout = null;
-    if (!state.gameOver && thisRound === state.roundId) nextQuestion();
-  }, CONFIG.nextQuestionDelayMs);
+    if (!state.gameOver && thisRound === state.roundId) {
+      nextQuestion();
+      state.transition = false;
+    }
+  }, 3000);
 }
 function handleAnswer(index) {
   if (state.gameOver || state.answered || !state.currentQuestion || state.loadingQuestions) return;
@@ -735,6 +743,15 @@ function render() {
   ctx.save();
   ctx.translate(shakeX, shakeY);
   drawBackground();
+
+  // show only background during transition
+  if (state.transition) {
+    const remaining = Math.max(0, state.transitionEnd - Date.now());
+    outlineText('LOADING NEXT QUESTION...', vw/2, vh/2, '#f2df97', 24, 'center');
+    ctx.restore();
+    drawOverlay();
+    return;
+  }
   drawQuestionPanel();
   drawStatsPanel();
   ctx.restore();
