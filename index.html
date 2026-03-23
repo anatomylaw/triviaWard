@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Ward Trivia</title>
+<style>
+  :root { --bg:#121212; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body {
+    margin:0;
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    background:var(--bg);
+    font-family:Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    touch-action:manipulation;
+  }
+  body { position:fixed; inset:0; overscroll-behavior:none; }
+  canvas {
+    display:block;
+    width:100vw;
+    height:100vh;
+    height:100dvh;
+    background:#171717;
+    touch-action:manipulation;
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<button id="restartBtn" aria-label="Restart game" style="position:fixed;top:max(12px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));z-index:10;border:none;border-radius:999px;padding:10px 14px;background:rgba(20,20,20,.78);color:#fff;font:600 14px Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.3);">Restart</button>
+<script>
+/*
+  GitHub Pages ready:
+  - Put this file in your repo as index.html
+  - Put your image next to it as background.png
+  - Or change CONFIG.backgroundImage below
+  - Works as a static client-side app
+*/
+const CONFIG = {
+  backgroundImage: './background.png',
+  nextQuestionDelayMs: 1600
+};
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const restartBtn = document.getElementById('restartBtn');
+
+function resize() {
+  const isPhone = window.innerWidth <= 430;
+  const dpr = Math.min(window.devicePixelRatio || 1, isPhone ? 1.5 : 2);
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  canvas.width = Math.floor(vw * dpr);
+  canvas.height = Math.floor(vh * dpr);
+  canvas.style.width = vw + 'px';
+  canvas.style.height = vh + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+resize();
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 120));
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+function shuffleArray(arr) {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
