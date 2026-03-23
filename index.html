@@ -538,6 +538,15 @@ window.addEventListener('keydown', e => {
 restartBtn.addEventListener('click', () => {
   resetGame();
 });
+
+function positionRestartButton() {
+  const layout = getLayout();
+  restartBtn.style.top = `${Math.round(layout.resetY)}px`;
+  restartBtn.style.bottom = 'auto';
+}
+
+window.addEventListener('resize', positionRestartButton);
+window.addEventListener('orientationchange', () => setTimeout(positionRestartButton, 140));
 window.addEventListener('error', (event) => {
   state.fatalError = event && event.message ? event.message : 'UNKNOWN ERROR';
   console.error(event);
@@ -617,24 +626,53 @@ function drawBackground() {
 function getLayout() {
   const isPhone = canvas.clientWidth <= 430;
   const panelWidth = isPhone ? canvas.clientWidth - 20 : Math.min(720, canvas.clientWidth * 0.6);
-  const questionY = isPhone ? 10 : canvas.clientHeight * 0.06;
-  const gap = 10;
+  const topMargin = isPhone ? 10 : Math.max(12, canvas.clientHeight * 0.04);
+  const gap = isPhone ? 10 : 12;
 
-  const available = canvas.clientHeight - questionY - gap - 10;
-  const questionHeight = isPhone
-    ? Math.min(500, Math.max(360, available * 0.72))
-    : Math.min(520, Math.max(400, available * 0.70));
-  const statsHeight = Math.max(120, available - questionHeight);
+  // Reserve space for the bottom reset button so panels never collide with it.
+  const resetReserve = isPhone ? 56 : 50;
+  const bottomSafe = isPhone ? 14 : 16;
+  const available = Math.max(260, canvas.clientHeight - topMargin - resetReserve - bottomSafe - gap);
+
+  // Keep both panels visible with no overlap.
+  let questionHeight = Math.round(available * (isPhone ? 0.68 : 0.66));
+  let statsHeight = available - questionHeight;
+
+  const minQuestion = isPhone ? 300 : 320;
+  const minStats = isPhone ? 118 : 126;
+
+  if (questionHeight < minQuestion) questionHeight = minQuestion;
+  if (statsHeight < minStats) statsHeight = minStats;
+
+  if (questionHeight + statsHeight > available) {
+    const overflow = questionHeight + statsHeight - available;
+    questionHeight = Math.max(minQuestion, questionHeight - overflow);
+  }
+  if (questionHeight + statsHeight > available) {
+    const overflow = questionHeight + statsHeight - available;
+    statsHeight = Math.max(minStats, statsHeight - overflow);
+  }
+
+  // Final safety clamp.
+  if (questionHeight + statsHeight > available) {
+    questionHeight = Math.max(minQuestion, available - minStats);
+    statsHeight = Math.max(minStats, available - questionHeight);
+  }
+
+  const x = (canvas.clientWidth - panelWidth) / 2;
+  const qY = topMargin;
+  const sY = qY + questionHeight + gap;
 
   return {
     isPhone,
     w: panelWidth,
-    x: (canvas.clientWidth - panelWidth) / 2,
-    qY: questionY,
+    x,
+    qY,
     qH: questionHeight,
-    sY: questionY + questionHeight + gap,
+    sY,
     sH: statsHeight,
-    gap
+    gap,
+    resetY: sY + statsHeight + 10
   };
 }
 
@@ -642,46 +680,66 @@ function drawQuestionPanel() {
   if (state.transition) return;
   const layout = getLayout();
   const { isPhone, w, x, qY: y, qH: h } = layout;
-  const qPad = isPhone ? 24 : 38;
-  const qFont = isPhone ? 17 : 22;
+  const qPad = isPhone ? 22 : 34;
+  const qFont = isPhone ? 16 : 21;
   const qLine = isPhone ? 18 : 22;
-  const answerFont = isPhone ? 15 : 18;
+  const answerFont = isPhone ? 15 : 17;
   const answerLine = isPhone ? 14 : 16;
-  const feedbackFont = isPhone ? 13 : 18;
-  const topBoxH = isPhone ? 82 : 98;
-  const boxH = isPhone ? 52 : 54;
-  const answersTop = y + topBoxH + 14; // tighter gap under question
-  const answersBottom = y + h - 14;
+  const feedbackFont = isPhone ? 12 : 16;
+  const outerPad = isPhone ? 12 : 14;
+  const topBoxH = isPhone ? 86 : 96;
+  const boxH = isPhone ? 50 : 52;
+  const footerH = isPhone ? 22 : 24;
+  const answersTop = y + outerPad + topBoxH + 10;
+  const answersBottom = y + h - outerPad - footerH;
   const totalBoxesHeight = boxH * 4;
   let gapBetween = (answersBottom - answersTop - totalBoxesHeight) / 3;
-
-  // smaller, tighter spacing
-  if (!isFinite(gapBetween) || gapBetween < 6) gapBetween = 6;
+  gapBetween = Math.max(isPhone ? 6 : 8, Math.min(isPhone ? 10 : 12, gapBetween));
 
   ctx.fillStyle = 'rgba(116,112,102,0.94)';
-  roundRect(ctx, x, y, w, h, 24); ctx.fill(); ctx.strokeStyle = '#121212'; ctx.lineWidth = 8; ctx.stroke();
-  ctx.fillStyle = '#252923';
-  roundRect(ctx, x + 12, y + 14, w - 24, topBoxH, 16); ctx.fill(); ctx.stroke();
+  roundRect(ctx, x, y, w, h, 24);
+  ctx.fill();
+  ctx.strokeStyle = '#121212';
+  ctx.lineWidth = 7;
+  ctx.stroke();
 
-  if (state.loadingQuestions) wrappedText('LOADING...', x + qPad, y + 40, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
-  else if (state.currentQuestion) wrappedText(state.currentQuestion.prompt, x + qPad, y + 40, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
+  ctx.fillStyle = '#252923';
+  roundRect(ctx, x + outerPad, y + outerPad, w - outerPad * 2, topBoxH, 16);
+  ctx.fill();
+  ctx.stroke();
+
+  if (state.loadingQuestions) {
+    wrappedText('LOADING...', x + qPad, y + outerPad + 26, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
+  } else if (state.currentQuestion) {
+    wrappedText(state.currentQuestion.prompt, x + qPad, y + outerPad + 26, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
+  }
 
   state.clickableAnswers = [];
   const choices = state.currentQuestion ? state.currentQuestion.choices : [];
   for (let i = 0; i < 4; i++) {
     const ay = answersTop + i * (boxH + gapBetween);
     ctx.fillStyle = 'rgba(43,47,41,0.96)';
-    roundRect(ctx, x + 12, ay, w - 24, boxH, 14); ctx.fill(); ctx.strokeStyle = '#0d0d0d'; ctx.lineWidth = 4; ctx.stroke();
+    roundRect(ctx, x + outerPad, ay, w - outerPad * 2, boxH, 14);
+    ctx.fill();
+    ctx.strokeStyle = '#0d0d0d';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
     const answerText = choices[i] && choices[i].text ? choices[i].text : '...';
     ctx.fillStyle = 'rgba(22,24,21,0.72)';
-    roundRect(ctx, x + 18, ay + 8, w - 36, boxH - 18, 10); ctx.fill();
-    wrappedText(answerText, x + 28, ay + 24, w - 56, answerLine, '#fff6d8', answerFont, 'left');
-    if (choices[i] && typeof choices[i].correct === 'boolean') state.clickableAnswers.push({ x:x + 12, y:ay, w:w - 24, h:boxH, index:i });
+    roundRect(ctx, x + outerPad + 6, ay + 6, w - outerPad * 2 - 12, boxH - 12, 10);
+    ctx.fill();
+    wrappedText(answerText, x + qPad, ay + 22, w - qPad * 2, answerLine, '#fff6d8', answerFont, 'left');
+
+    if (choices[i] && typeof choices[i].correct === 'boolean') {
+      state.clickableAnswers.push({ x: x + outerPad, y: ay, w: w - outerPad * 2, h: boxH, index: i });
+    }
   }
 
-  const fill = state.feedbackType === 'good' ? '#93e070' : state.feedbackType === 'bad' ? '#ff7979' : '#f2df97';
-  if (isPhone) wrappedText(state.feedback, x + 18, y + h - 34, w - 36, 14, fill, feedbackFont, 'left');
-  else wrappedText(state.feedback, x + 20, y + h - 16, w - 40, 18, fill, feedbackFont, 'left');
+  if (state.feedback) {
+    const fill = state.feedbackType === 'good' ? '#93e070' : state.feedbackType === 'bad' ? '#ff7979' : '#f2df97';
+    wrappedText(state.feedback, x + qPad, y + h - 8, w - qPad * 2, 14, fill, feedbackFont, 'left');
+  }
 }
 
 function barFillRatio(def, v) { return (v - def.min) / (def.max - def.min); }
@@ -694,36 +752,50 @@ function drawStatsPanel() {
   if (state.transition) return;
   const layout = getLayout();
   const { isPhone, w, x, sY: y, sH: h } = layout;
+  const outerPad = isPhone ? 12 : 14;
 
   ctx.fillStyle = 'rgba(30,30,27,0.95)';
-  roundRect(ctx, x, y, w, h, 18); ctx.fill(); ctx.strokeStyle = '#070707'; ctx.lineWidth = 6; ctx.stroke();
-  outlineText('PATIENT STATS', x + 20, y + 30, '#f4df9a', isPhone ? 18 : 28, 'left');
-  outlineText('SCORE: ' + state.score, x + w - 18, y + 30, '#f4d265', isPhone ? 14 : 20, 'right');
-  outlineText('WRONG: ' + state.wrongCount + '/10', x + w - 18, y + 48, '#ff9d9d', isPhone ? 12 : 16, 'right');
+  roundRect(ctx, x, y, w, h, 18);
+  ctx.fill();
+  ctx.strokeStyle = '#070707';
+  ctx.lineWidth = 5;
+  ctx.stroke();
 
-  const labelFont = isPhone ? 11 : 16;
-  const valueFont = isPhone ? 11 : 16;
-  const headerH = isPhone ? 60 : 84;
-  const rowGap = Math.max(24, (h - headerH - 8) / 4);
-  const startY = y + headerH;
+  outlineText('PATIENT STATS', x + outerPad, y + 24, '#f4df9a', isPhone ? 16 : 24, 'left');
+  outlineText('SCORE: ' + state.score, x + w - outerPad, y + 24, '#f4d265', isPhone ? 13 : 18, 'right');
+  outlineText('WRONG: ' + state.wrongCount + '/10', x + w - outerPad, y + 42, '#ff9d9d', isPhone ? 11 : 14, 'right');
+
+  const labelFont = isPhone ? 10 : 14;
+  const valueFont = isPhone ? 10 : 14;
+  const headerH = isPhone ? 52 : 72;
+  const innerTop = y + headerH;
+  const innerBottom = y + h - 10;
+  const rowGap = (innerBottom - innerTop) / 4;
 
   statDefs.forEach((def, i) => {
-    const yy = startY + i * rowGap;
+    const yy = innerTop + i * rowGap;
     const val = state.stats[def.key];
     const ratio = clamp(barFillRatio(def, val), 0, 1);
-    const labelX = x + 12;
-    const labelW = isPhone ? 96 : 170;
-    wrappedText(def.label, labelX, yy + 12, labelW, 11, '#f3e9bc', labelFont, 'left');
+    const labelX = x + outerPad;
+    const labelW = isPhone ? 86 : 150;
+    wrappedText(def.label, labelX, yy + 10, labelW, 10, '#f3e9bc', labelFont, 'left');
+
     const valueText = statDisplay(def, val);
     ctx.font = `${valueFont}px Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`;
     const valueW = Math.ceil(ctx.measureText(valueText).width) + 8;
-    const rightPad = 12;
-    const barX = isPhone ? x + 112 : x + 220;
-    const barRight = x + w - rightPad - valueW;
-    const barW = Math.max(isPhone ? 56 : 120, barRight - barX);
-    ctx.fillStyle = '#101511'; ctx.fillRect(barX, yy, barW, 14); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(barX, yy, barW, 14);
-    ctx.fillStyle = def.color; ctx.fillRect(barX, yy, barW * ratio, 14);
-    outlineText(valueText, barRight + valueW - 2, yy + 12, '#f7efc7', valueFont, 'right');
+    const barX = isPhone ? x + 102 : x + 190;
+    const barRight = x + w - outerPad - valueW;
+    const barW = Math.max(isPhone ? 52 : 110, barRight - barX);
+
+    ctx.fillStyle = '#101511';
+    ctx.fillRect(barX, yy, barW, 12);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(barX, yy, barW, 12);
+    ctx.fillStyle = def.color;
+    ctx.fillRect(barX, yy, barW * ratio, 12);
+
+    outlineText(valueText, barRight + valueW - 2, yy + 10, '#f7efc7', valueFont, 'right');
   });
 }
 function drawMonitor() { /* hidden to avoid overlap */ }
@@ -804,8 +876,10 @@ function frame(ts) {
 }
 
 async function boot() {
+  positionRestartButton();
   requestAnimationFrame(frame);
-  try { await resetGame(); }
+  try { await resetGame();
+    positionRestartButton(); }
   catch (e) {
     console.error(e);
     state.currentQuestion = null;
