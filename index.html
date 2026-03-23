@@ -522,10 +522,7 @@ function applyOutcome(correct) {
   state.transition = true;
   state.transitionEnd = Date.now() + 3000;
 
-  state.pendingNextTimeout = setTimeout(() => {
-    state.pendingNextTimeout = null;
-    if (!state.gameOver && thisRound === state.roundId) {
-      nextQuestion();
+  // removed auto-advance; waiting for user click
       state.transition = false;
     }
   }, 3000);
@@ -549,11 +546,17 @@ restartBtn.addEventListener('click', () => {
   resetGame();
 });
 function handlePointer(x, y) {
+  if (state.answered && !state.gameOver) {
+    nextQuestion();
+    return;
+  }
   for (const a of state.clickableAnswers) {
     if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) {
       handleAnswer(a.index);
       break;
     }
+  }
+}
   }
 }
 canvas.addEventListener('pointerdown', e => {
@@ -745,13 +748,7 @@ function render() {
   drawBackground();
 
   // show only background during transition
-  if (state.transition) {
-    const remaining = Math.max(0, state.transitionEnd - Date.now());
-    outlineText('LOADING NEXT QUESTION...', vw/2, vh/2, '#f2df97', 24, 'center');
-    ctx.restore();
-    drawOverlay();
-    return;
-  }
+  
   drawQuestionPanel();
   drawStatsPanel();
   ctx.restore();
