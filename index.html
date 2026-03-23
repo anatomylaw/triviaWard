@@ -29,7 +29,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<button id="restartBtn" aria-label="Restart game" style="position:fixed;top:max(12px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));z-index:10;border:none;border-radius:999px;padding:10px 14px;background:rgba(20,20,20,.78);color:#fff;font:600 14px Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.3);">Restart</button>
+<button id="restartBtn" aria-label="Restart game" style="position:fixed;bottom:max(12px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:10;border:none;border-radius:999px;padding:12px 18px;background:rgba(20,20,20,.85);color:#fff;font:600 15px Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 2px 10px rgba(0,0,0,.35);">Restart</button>
 <script>
 /*
   GitHub Pages ready:
@@ -616,12 +616,16 @@ function drawBackground() {
 
 function getLayout() {
   const isPhone = canvas.clientWidth <= 430;
-  const panelWidth = isPhone ? canvas.clientWidth - 20 : Math.min(720, canvas.clientWidth * 0.54);
-  const questionY = isPhone ? 10 : canvas.clientHeight * 0.08;
-  const gap = 12;
+  const panelWidth = isPhone ? canvas.clientWidth - 20 : Math.min(720, canvas.clientWidth * 0.6);
+  const questionY = isPhone ? 10 : canvas.clientHeight * 0.06;
+  const gap = 10;
+
   const available = canvas.clientHeight - questionY - gap - 10;
-  const questionHeight = isPhone ? Math.min(410, Math.max(330, available * 0.62)) : Math.min(430, Math.max(360, available * 0.60));
-  const statsHeight = Math.max(160, available - questionHeight);
+  const questionHeight = isPhone
+    ? Math.min(500, Math.max(360, available * 0.72))
+    : Math.min(520, Math.max(400, available * 0.70));
+  const statsHeight = Math.max(120, available - questionHeight);
+
   return {
     isPhone,
     w: panelWidth,
@@ -746,10 +750,33 @@ function render() {
     ctx.translate(shakeX, shakeY);
     drawBackground();
     if (state.transition) {
-      const msgSize = canvas.clientWidth <= 430 ? 18 : 24;
-      const subSize = canvas.clientWidth <= 430 ? 16 : 20;
-      wrappedText(state.feedback, vw * 0.1, vh * 0.5 - 8, vw * 0.8, 24, state.feedbackType === 'good' ? '#93e070' : '#ff7979', msgSize, 'left');
-      wrappedText('CLICK TO LOAD NEXT QUESTION', vw * 0.1, vh * 0.5 + 28, vw * 0.8, 22, '#fff6d8', subSize, 'left');
+      const isPhone = canvas.clientWidth <= 430;
+      const msgSize = isPhone ? 18 : 26;
+      const subSize = isPhone ? 15 : 20;
+
+      // ANSWER TEXT (higher)
+      wrappedText(
+        state.feedback,
+        vw * 0.1,
+        vh * 0.45,
+        vw * 0.8,
+        26,
+        state.feedbackType === 'good' ? '#93e070' : '#ff7979',
+        msgSize,
+        'left'
+      );
+
+      // CLICK TEXT (lower, clearly separated)
+      wrappedText(
+        'CLICK TO LOAD NEXT QUESTION',
+        vw * 0.1,
+        vh * 0.65,
+        vw * 0.8,
+        24,
+        '#fff6d8',
+        subSize,
+        'left'
+      );
     } else {
       drawQuestionPanel();
       drawStatsPanel();
