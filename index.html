@@ -657,7 +657,8 @@ function drawQuestionPanel() {
   ctx.fillStyle = '#252923';
   roundRect(ctx, x + 12, y + 14, w - 24, topBoxH, 16); ctx.fill(); ctx.stroke();
 
-  if (state.loadingQuestions) wrappedText('LOADING CURRENT QUESTIONS...', x + qPad, y + 40, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
+  if (state.loadingQuestions && state.answered) wrappedText('CLICK TO LOAD NEXT QUESTION...', x + qPad, y + 40, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
+  else if (state.loadingQuestions) wrappedText('LOADING CURRENT QUESTIONS...', x + qPad, y + 40, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');, x + qPad, y + 40, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
   else if (state.currentQuestion) wrappedText(state.currentQuestion.prompt, x + qPad, y + 40, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
   else wrappedText(state.feedback, x + qPad, y + 40, w - qPad * 2, qLine, '#f2e6b5', qFont, 'left');
 
@@ -674,7 +675,10 @@ function drawQuestionPanel() {
     if (choices[i] && typeof choices[i].correct === 'boolean') state.clickableAnswers.push({ x:x + 12, y:ay, w:w - 24, h:boxH, index:i });
   }
 
-  const fill = state.feedbackType === 'good' ? '#93e070' : state.feedbackType === 'bad' ? '#ff7979' : '#f2df97';
+  let fill = state.feedbackType === 'good' ? '#93e070' : state.feedbackType === 'bad' ? '#ff7979' : '#f2df97';
+  if (state.answered && state.loadingQuestions) {
+    state.feedback = (state.feedback.includes('TRUE') ? 'TRUE. ' : 'FALSE. ') + 'CORRECT ANSWER: ' + state.correctAnswerText + ' — CLICK TO CONTINUE';
+  }
   if (isPhone) {
     wrappedText(state.feedback, x + 18, y + h - 34, w - 36, 14, fill, feedbackFont, 'left');
   } else {
