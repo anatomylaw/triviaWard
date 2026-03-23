@@ -64,8 +64,8 @@ ctx.textBaseline = 'alphabetic';
 function resize() {
   const isPhone = window.innerWidth <= 430;
   const dpr = Math.min(window.devicePixelRatio || 1, isPhone ? 1.5 : 2);
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const vw = Math.max(320, window.innerWidth);
+  const vh = Math.max(480, window.innerHeight);
   canvas.width = Math.floor(vw * dpr);
   canvas.height = Math.floor(vh * dpr);
   canvas.style.width = vw + 'px';
@@ -352,7 +352,7 @@ async function refreshQuestionPool() {
     }));
     state.sourceLabel = state.questionPool.length ? 'DATABASE-HEAVY MIX' : 'LIVE SOURCES UNAVAILABLE';
     if (!state.questionPool.length) {
-      state.feedback = 'NO LIVE QUESTIONS AVAILABLE. PRESS R TO RETRY.';
+      state.feedback = 'NO LIVE QUESTIONS AVAILABLE. TAP TO TRY AGAIN.';
       state.feedbackType = 'bad';
     }
     return;
@@ -390,14 +390,14 @@ async function refreshQuestionPool() {
     }));
     state.sourceLabel = state.questionPool.length ? 'DATABASE-HEAVY MIX' : 'LIVE SOURCES UNAVAILABLE';
     if (!state.questionPool.length) {
-      state.feedback = 'NO LIVE QUESTIONS AVAILABLE. PRESS R TO RETRY.';
+      state.feedback = 'NO LIVE QUESTIONS AVAILABLE. TAP TO TRY AGAIN.';
       state.feedbackType = 'bad';
     }
   } catch (e) {
     console.error(e);
     state.questionPool = [];
     state.sourceLabel = 'LIVE SOURCES UNAVAILABLE';
-    state.feedback = 'NO LIVE QUESTIONS AVAILABLE. PRESS R TO RETRY.';
+    state.feedback = 'NO LIVE QUESTIONS AVAILABLE. TAP TO TRY AGAIN.';
     state.feedbackType = 'bad';
   }
   state.loadingQuestions = false;
@@ -409,7 +409,7 @@ async function nextQuestion() {
   if (state.questionPool.length === 0) await refreshQuestionPool();
   if (state.questionPool.length === 0) {
     state.currentQuestion = null;
-    state.feedback = 'NO LIVE QUESTIONS AVAILABLE. PRESS R TO RETRY.';
+    state.feedback = 'NO LIVE QUESTIONS AVAILABLE. TAP TO TRY AGAIN.';
     state.feedbackType = 'bad';
     return;
   }
@@ -430,7 +430,7 @@ async function nextQuestion() {
   }
   if (!picked) {
     state.currentQuestion = null;
-    state.feedback = 'NO VALID LIVE QUESTIONS AVAILABLE. PRESS R TO RETRY.';
+    state.feedback = 'NO VALID LIVE QUESTIONS AVAILABLE. TAP TO TRY AGAIN.';
     state.feedbackType = 'bad';
     return;
   }
@@ -542,7 +542,7 @@ window.addEventListener('unhandledrejection', (event) => {
   console.error(event);
 });
 function handlePointer(x, y) {
-  if (state.gameOver) {
+  if (state.gameOver || state.fatalError) {
     resetGame();
     return;
   }
@@ -558,9 +558,6 @@ function handlePointer(x, y) {
   }
 }
 canvas.addEventListener('pointerdown', e => {
-  const rect = canvas.getBoundingClientRect();
-  handlePointer(e.clientX - rect.left, e.clientY - rect.top);
-});
   const rect = canvas.getBoundingClientRect();
   handlePointer(e.clientX - rect.left, e.clientY - rect.top);
 });
@@ -854,6 +851,7 @@ function render() {
     drawBackground();
     wrappedText('GAME ERROR', vw * 0.1, vh * 0.45, vw * 0.8, 28, '#ff7979', 28, 'left');
     wrappedText('TAP TO TRY AGAIN', vw * 0.1, vh * 0.45 + 42, vw * 0.8, 22, '#fff6d8', 18, 'left');
+    wrappedText(state.fatalError || 'UNKNOWN ERROR', vw * 0.1, vh * 0.45 + 74, vw * 0.8, 18, '#ffb3b3', 14, 'left');
   }
 }
 function frame(ts) {
@@ -870,7 +868,7 @@ async function boot() {
   catch (e) {
     console.error(e);
     state.currentQuestion = null;
-    state.feedback = 'NO LIVE QUESTIONS AVAILABLE. PRESS RESTART.';
+    state.feedback = 'NO LIVE QUESTIONS AVAILABLE. TAP TO TRY AGAIN.';
     state.feedbackType = 'bad';
     state.loadingQuestions = false;
   }
