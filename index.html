@@ -31,13 +31,7 @@
 <canvas id="game"></canvas>
 <button id="restartBtn" aria-label="Restart game" style="position:fixed;bottom:max(8px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:10;border:none;border-radius:999px;padding:8px 14px;background:rgba(20,20,20,.8);color:#fff;font:600 13px Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.3);">Reset</button>
 <script>
-/*
-  GitHub Pages ready:
-  - Put this file in your repo as index.html
-  - Put your image next to it as background.png
-  - Or change CONFIG.backgroundImage below
-  - Works as a static client-side app
-*/
+  
 const CONFIG = {
   backgroundImage: './background.png',
   nextQuestionDelayMs: 1600,
@@ -650,11 +644,11 @@ function drawQuestionPanel() {
   const feedbackFont = isPhone ? 13 : 18;
   const topBoxH = isPhone ? 82 : 98;
   const boxH = isPhone ? 52 : 54;
-  const footerH = isPhone ? 52 : 26;
-  const answersTop = y + topBoxH + 24;
-  const answersBottom = y + h - footerH - 10;
-  const answerArea = Math.max(220, answersBottom - answersTop);
-  const answerStep = answerArea / 4;
+  const answersTop = y + topBoxH + 20;
+  const answersBottom = y + h - 20;
+  const totalBoxesHeight = boxH * 4;
+  let gapBetween = (answersBottom - answersTop - totalBoxesHeight) / 3;
+  if (!isFinite(gapBetween) || gapBetween < 8) gapBetween = 8;
 
   ctx.fillStyle = 'rgba(116,112,102,0.94)';
   roundRect(ctx, x, y, w, h, 24); ctx.fill(); ctx.strokeStyle = '#121212'; ctx.lineWidth = 8; ctx.stroke();
@@ -667,7 +661,7 @@ function drawQuestionPanel() {
   state.clickableAnswers = [];
   const choices = state.currentQuestion ? state.currentQuestion.choices : [];
   for (let i = 0; i < 4; i++) {
-    const ay = answersTop + i * answerStep;
+    const ay = answersTop + i * (boxH + gapBetween);
     ctx.fillStyle = 'rgba(43,47,41,0.96)';
     roundRect(ctx, x + 12, ay, w - 24, boxH, 14); ctx.fill(); ctx.strokeStyle = '#0d0d0d'; ctx.lineWidth = 4; ctx.stroke();
     const answerText = choices[i] && choices[i].text ? choices[i].text : '...';
