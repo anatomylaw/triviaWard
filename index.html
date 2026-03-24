@@ -759,7 +759,7 @@ function drawQuestionPanel() {
     ctx.fillStyle = 'rgba(22,24,21,0.72)';
     roundRect(ctx, x + outerPad + 6, ay + 6, w - outerPad * 2 - 12, boxH - 12, 10);
     ctx.fill();
-    wrappedText(answerText, x + qPad, ay + 22, w - qPad * 2, answerLine, '#fff6d8', answerFont, 'left');
+    wrappedText(answerText, x + w / 2, ay + 22, w - qPad * 2, answerLine, '#fff6d8', answerFont, 'center');
 
     if (choices[i] && typeof choices[i].correct === 'boolean') {
       state.clickableAnswers.push({ x: x + outerPad, y: ay, w: w - outerPad * 2, h: boxH, index: i });
@@ -795,10 +795,10 @@ function drawStatsPanel() {
   const contentBottom = y + h - (isPhone ? 10 : 12);
   const rowGap = (contentBottom - contentTop) / 4;
 
-  const titleFont = isPhone ? 12 : 17;
-  const valueFont = isPhone ? 12 : 16;
-  const titleLine = isPhone ? 11 : 14;
-  const barHeight = isPhone ? 14 : 16;
+  const titleFont = isPhone ? 13 : 18;
+  const valueFont = isPhone ? 14 : 18;
+  const titleLine = isPhone ? 12 : 16;
+  const barHeight = isPhone ? 18 : 22;
 
   statDefs.forEach((def, i) => {
     const rowY = contentTop + i * rowGap;
@@ -806,16 +806,18 @@ function drawStatsPanel() {
     const ratio = clamp(barFillRatio(def, val), 0, 1);
 
     const labelX = x + outerPad;
-    const labelW = isPhone ? 132 : 190;
+    const labelW = isPhone ? 160 : 240;
     wrappedText(def.label, labelX, rowY + 2, labelW, titleLine, '#f3e9bc', titleFont, 'left');
 
     const valueText = statDisplay(def, val);
     ctx.font = `${valueFont}px Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`;
-    const valueW = Math.ceil(ctx.measureText(valueText).width) + 12;
-    const barX = isPhone ? x + 138 : x + 245;
+    const valueW = Math.ceil(ctx.measureText(valueText).width) + 14;
+
+    // align bars directly under titles
+    const barX = labelX;
     const barRight = x + w - outerPad - valueW;
-    const barW = Math.max(isPhone ? 82 : 170, barRight - barX);
-    const barY = rowY + (isPhone ? 18 : 20);
+    const barW = Math.max(isPhone ? 120 : 260, barRight - barX);
+    const barY = rowY + (isPhone ? 20 : 24);
 
     ctx.fillStyle = '#101511';
     ctx.fillRect(barX, barY, barW, barHeight);
@@ -825,7 +827,7 @@ function drawStatsPanel() {
     ctx.fillStyle = def.color;
     ctx.fillRect(barX, barY, barW * ratio, barHeight);
 
-    outlineText(valueText, barRight + valueW - 2, barY + barHeight - 2, '#f7efc7', valueFont, 'right');
+    outlineText(valueText, barRight + valueW - 2, barY + barHeight - 2, '#f7efc7', valueFont + 2, 'right');
   });
 }
 function drawMonitor() { /* hidden to avoid overlap */ }
