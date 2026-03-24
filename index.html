@@ -629,9 +629,9 @@ function getQuestionMetrics(isPhone, panelWidth) {
   if (layoutCache.metricsKey === cacheKey && layoutCache.metrics) return layoutCache.metrics;
 
   const qPad = isPhone ? 22 : 36;
-  const qFont = isPhone ? 16 : 21;
+  const qFont = isPhone ? 18 : 24;
   const qLine = isPhone ? 18 : 22;
-  const outerPad = isPhone ? 12 : 16;
+  const outerPad = isPhone ? 10 : 12;
   const topBoxMinH = isPhone ? 88 : 100;
   const maxTextWidth = panelWidth - qPad * 2;
 
@@ -672,9 +672,9 @@ function getLayout() {
   const minGap = isPhone ? 6 : 8;
 
   const minQuestion = outerPad * 2 + topBoxH + boxH * 4 + minGap * 5;
-  const minStats = isPhone ? 150 : 170;
+  const minStats = isPhone ? 130 : 150;
 
-  let questionHeight = Math.max(minQuestion, Math.round(available * (isPhone ? 0.54 : 0.52)));
+  let questionHeight = Math.max(minQuestion, Math.round(available * (isPhone ? 0.60 : 0.58)));
   let statsHeight = Math.max(minStats, available - questionHeight);
 
   if (questionHeight + statsHeight > available) {
@@ -715,7 +715,7 @@ function drawQuestionPanel() {
   const layout = getLayout();
   const { w, x, qY: y, qH: h, metrics } = layout;
   const { outerPad, topBoxH, boxH, minGap, qPad, qFont, qLine } = metrics;
-  const answerFont = layout.isPhone ? 15 : 17;
+  const answerFont = layout.isPhone ? 16 : 19;
   const answerLine = layout.isPhone ? 14 : 16;
 
   const totalBoxesHeight = boxH * 4;
@@ -795,8 +795,8 @@ function drawStatsPanel() {
   const contentBottom = y + h - (isPhone ? 10 : 12);
   const rowGap = (contentBottom - contentTop) / 4;
 
-  const titleFont = isPhone ? 13 : 18;
-  const valueFont = isPhone ? 14 : 18;
+  const titleFont = isPhone ? 12 : 16;
+  const valueFont = isPhone ? 13 : 16;
   const titleLine = isPhone ? 12 : 16;
   const barHeight = isPhone ? 18 : 22;
 
