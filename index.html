@@ -196,6 +196,13 @@ const state = {
   transition:false, transitionEnd:0, fatalError:''
 };
 
+const layoutCache = {
+  metricsKey: '',
+  metrics: null,
+  layoutKey: '',
+  layout: null
+};
+
 const bgImg = new Image();
 let bgLoaded = false;
 let bgFailed = false;
@@ -617,16 +624,19 @@ function drawBackground() {
 }
 
 function getQuestionMetrics(isPhone, panelWidth) {
-  const qPad = isPhone ? 22 : 34;
+  const prompt = state.currentQuestion ? state.currentQuestion.prompt : (state.loadingQuestions ? 'LOADING...' : '');
+  const cacheKey = [isPhone ? 'p' : 'd', Math.round(panelWidth), prompt].join('|');
+  if (layoutCache.metricsKey === cacheKey && layoutCache.metrics) return layoutCache.metrics;
+
+  const qPad = isPhone ? 22 : 36;
   const qFont = isPhone ? 16 : 21;
   const qLine = isPhone ? 18 : 22;
-  const outerPad = isPhone ? 12 : 14;
-  const topBoxMinH = isPhone ? 86 : 96;
+  const outerPad = isPhone ? 12 : 16;
+  const topBoxMinH = isPhone ? 88 : 100;
   const maxTextWidth = panelWidth - qPad * 2;
-  const text = state.currentQuestion ? state.currentQuestion.prompt : (state.loadingQuestions ? 'LOADING...' : '');
 
   ctx.font = `${qFont}px Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`;
-  const words = String(text).split(' ');
+  const words = String(prompt).split(' ');
   let line = '';
   let lines = 0;
   for (const word of words) {
@@ -639,53 +649,52 @@ function getQuestionMetrics(isPhone, panelWidth) {
     }
   }
   if (line) lines += 1;
-  const textBlockH = Math.max(qLine, lines * qLine);
-  const topBoxH = Math.max(topBoxMinH, outerPad + 14 + textBlockH + 16);
 
-  return { qPad, qFont, qLine, outerPad, topBoxH };
+  const textBlockH = Math.max(qLine, lines * qLine);
+  const topBoxH = Math.max(topBoxMinH, outerPad + 14 + textBlockH + 18);
+  const metrics = { qPad, qFont, qLine, outerPad, topBoxH, lines };
+  layoutCache.metricsKey = cacheKey;
+  layoutCache.metrics = metrics;
+  return metrics;
 }
 
 function getLayout() {
   const isPhone = canvas.clientWidth <= 430;
-  const panelWidth = isPhone ? canvas.clientWidth - 20 : Math.min(720, canvas.clientWidth * 0.6);
-  const topMargin = isPhone ? 10 : Math.max(12, canvas.clientHeight * 0.04);
+  const panelWidth = isPhone ? canvas.clientWidth - 20 : Math.min(760, canvas.clientWidth * 0.62);
+  const topMargin = isPhone ? 10 : Math.max(12, canvas.clientHeight * 0.035);
   const gap = isPhone ? 10 : 12;
   const bottomSafe = isPhone ? 14 : 16;
-  const available = Math.max(260, canvas.clientHeight - topMargin - bottomSafe - gap);
+  const available = Math.max(300, canvas.clientHeight - topMargin - bottomSafe - gap);
 
-  const { outerPad, topBoxH } = getQuestionMetrics(isPhone, panelWidth);
-  const boxH = isPhone ? 50 : 52;
-  const minGapBetween = isPhone ? 6 : 8;
-  const answersBlockH = boxH * 4 + minGapBetween * 3;
-  const feedbackReserve = 0;
-  const minQuestion = outerPad * 2 + topBoxH + 10 + answersBlockH + 10 + feedbackReserve;
-  const minStats = isPhone ? 118 : 126;
+  const metrics = getQuestionMetrics(isPhone, panelWidth);
+  const { outerPad, topBoxH } = metrics;
+  const boxH = isPhone ? 50 : 54;
+  const minGap = isPhone ? 6 : 8;
 
-  // Slightly increase stats panel share
-  let questionHeight = Math.max(minQuestion, Math.round(available * (isPhone ? 0.64 : 0.62)));
-  let statsHeight = Math.max(minStats + 10, available - questionHeight);
+  const minQuestion = outerPad * 2 + topBoxH + boxH * 4 + minGap * 5;
+  const minStats = isPhone ? 150 : 170;
+
+  let questionHeight = Math.max(minQuestion, Math.round(available * (isPhone ? 0.54 : 0.52)));
+  let statsHeight = Math.max(minStats, available - questionHeight);
 
   if (questionHeight + statsHeight > available) {
     const overflow = questionHeight + statsHeight - available;
-    if (statsHeight - overflow >= minStats) {
-      statsHeight -= overflow;
+    if (questionHeight - overflow >= minQuestion) {
+      questionHeight -= overflow;
     } else {
-      const remaining = overflow - (statsHeight - minStats);
-      statsHeight = minStats;
-      questionHeight = Math.max(minQuestion, questionHeight - remaining);
+      statsHeight = Math.max(minStats, available - minQuestion);
+      questionHeight = available - statsHeight;
     }
-  }
-
-  if (questionHeight + statsHeight > available) {
-    questionHeight = Math.max(minQuestion, available - minStats);
-    statsHeight = Math.max(minStats, available - questionHeight);
   }
 
   const x = (canvas.clientWidth - panelWidth) / 2;
   const qY = topMargin;
   const sY = qY + questionHeight + gap;
 
-  return {
+  const cacheKey = [canvas.clientWidth, canvas.clientHeight, isPhone ? 'p' : 'd', questionHeight, statsHeight, metrics.topBoxH, state.transition ? 1 : 0].join('|');
+  if (layoutCache.layoutKey === cacheKey && layoutCache.layout) return layoutCache.layout;
+
+  const layout = {
     isPhone,
     w: panelWidth,
     x,
@@ -694,30 +703,27 @@ function getLayout() {
     sY,
     sH: statsHeight,
     gap,
-    metrics: { outerPad, topBoxH, boxH, minGapBetween }
+    metrics: { ...metrics, boxH, minGap }
   };
+  layoutCache.layoutKey = cacheKey;
+  layoutCache.layout = layout;
+  return layout;
 }
 
 function drawQuestionPanel() {
   if (state.transition) return;
   const layout = getLayout();
-  const { isPhone, w, x, qY: y, qH: h, metrics } = layout;
-  const { outerPad, topBoxH, boxH, minGapBetween } = metrics;
-  const qPad = isPhone ? 22 : 34;
-  const qFont = isPhone ? 16 : 21;
-  const qLine = isPhone ? 18 : 22;
-  const answerFont = isPhone ? 15 : 17;
-  const answerLine = isPhone ? 14 : 16;
+  const { w, x, qY: y, qH: h, metrics } = layout;
+  const { outerPad, topBoxH, boxH, minGap, qPad, qFont, qLine } = metrics;
+  const answerFont = layout.isPhone ? 15 : 17;
+  const answerLine = layout.isPhone ? 14 : 16;
 
-  // Compute a single gap 'g' so that top gap, between gaps, and bottom gap are equal
   const totalBoxesHeight = boxH * 4;
-  const totalAvailable = h - outerPad * 2 - topBoxH; // space for boxes + 5 equal gaps
-  let g = (totalAvailable - totalBoxesHeight) / 5;
-  const maxGap = isPhone ? 10 : 12;
-  g = Math.max(minGapBetween, Math.min(maxGap, g));
+  const totalGapSpace = h - outerPad * 2 - topBoxH - totalBoxesHeight;
+  let g = totalGapSpace / 5;
+  if (!isFinite(g) || g < minGap) g = minGap;
 
   const answersTop = y + outerPad + topBoxH + g;
-  const gapBetween = g;
 
   ctx.fillStyle = 'rgba(116,112,102,0.94)';
   roundRect(ctx, x, y, w, h, 24);
@@ -741,7 +747,7 @@ function drawQuestionPanel() {
   state.clickableAnswers = [];
   const choices = state.currentQuestion ? state.currentQuestion.choices : [];
   for (let i = 0; i < 4; i++) {
-    const ay = answersTop + i * (boxH + gapBetween);
+    const ay = answersTop + i * (boxH + g);
     ctx.fillStyle = 'rgba(43,47,41,0.96)';
     roundRect(ctx, x + outerPad, ay, w - outerPad * 2, boxH, 14);
     ctx.fill();
@@ -771,7 +777,7 @@ function drawStatsPanel() {
   if (state.transition) return;
   const layout = getLayout();
   const { isPhone, w, x, sY: y, sH: h } = layout;
-  const outerPad = isPhone ? 12 : 14;
+  const outerPad = isPhone ? 12 : 16;
 
   ctx.fillStyle = 'rgba(30,30,27,0.95)';
   roundRect(ctx, x, y, w, h, 18);
@@ -780,41 +786,46 @@ function drawStatsPanel() {
   ctx.lineWidth = 5;
   ctx.stroke();
 
-  outlineText('PATIENT STATS', x + outerPad, y + 24, '#f4df9a', isPhone ? 16 : 24, 'left');
-  outlineText('SCORE: ' + state.score, x + w - outerPad, y + 24, '#f4d265', isPhone ? 13 : 18, 'right');
-  outlineText('WRONG: ' + state.wrongCount + '/10', x + w - outerPad, y + 42, '#ff9d9d', isPhone ? 11 : 14, 'right');
+  outlineText('PATIENT STATS', x + outerPad, y + 28, '#f4df9a', isPhone ? 18 : 27, 'left');
+  outlineText('SCORE: ' + state.score, x + w - outerPad, y + 28, '#f4d265', isPhone ? 14 : 20, 'right');
+  outlineText('WRONG: ' + state.wrongCount + '/10', x + w - outerPad, y + 48, '#ff9d9d', isPhone ? 12 : 15, 'right');
 
-  const labelFont = isPhone ? 10 : 14;
-  const valueFont = isPhone ? 10 : 14;
-  const headerH = isPhone ? 52 : 72;
-  const innerTop = y + headerH;
-  const innerBottom = y + h - 10;
-  const rowGap = (innerBottom - innerTop) / 4;
+  const headerH = isPhone ? 62 : 88;
+  const contentTop = y + headerH;
+  const contentBottom = y + h - (isPhone ? 10 : 12);
+  const rowGap = (contentBottom - contentTop) / 4;
+
+  const titleFont = isPhone ? 12 : 17;
+  const valueFont = isPhone ? 12 : 16;
+  const titleLine = isPhone ? 11 : 14;
+  const barHeight = isPhone ? 14 : 16;
 
   statDefs.forEach((def, i) => {
-    const yy = innerTop + i * rowGap;
+    const rowY = contentTop + i * rowGap;
     const val = state.stats[def.key];
     const ratio = clamp(barFillRatio(def, val), 0, 1);
+
     const labelX = x + outerPad;
-    const labelW = isPhone ? 86 : 150;
-    wrappedText(def.label, labelX, yy + 10, labelW, 10, '#f3e9bc', labelFont, 'left');
+    const labelW = isPhone ? 132 : 190;
+    wrappedText(def.label, labelX, rowY + 2, labelW, titleLine, '#f3e9bc', titleFont, 'left');
 
     const valueText = statDisplay(def, val);
     ctx.font = `${valueFont}px Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`;
-    const valueW = Math.ceil(ctx.measureText(valueText).width) + 8;
-    const barX = isPhone ? x + 102 : x + 190;
+    const valueW = Math.ceil(ctx.measureText(valueText).width) + 12;
+    const barX = isPhone ? x + 138 : x + 245;
     const barRight = x + w - outerPad - valueW;
-    const barW = Math.max(isPhone ? 52 : 110, barRight - barX);
+    const barW = Math.max(isPhone ? 82 : 170, barRight - barX);
+    const barY = rowY + (isPhone ? 18 : 20);
 
     ctx.fillStyle = '#101511';
-    ctx.fillRect(barX, yy, barW, 12);
+    ctx.fillRect(barX, barY, barW, barHeight);
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 2;
-    ctx.strokeRect(barX, yy, barW, 12);
+    ctx.strokeRect(barX, barY, barW, barHeight);
     ctx.fillStyle = def.color;
-    ctx.fillRect(barX, yy, barW * ratio, 12);
+    ctx.fillRect(barX, barY, barW * ratio, barHeight);
 
-    outlineText(valueText, barRight + valueW - 2, yy + 10, '#f7efc7', valueFont, 'right');
+    outlineText(valueText, barRight + valueW - 2, barY + barHeight - 2, '#f7efc7', valueFont, 'right');
   });
 }
 function drawMonitor() { /* hidden to avoid overlap */ }
@@ -865,7 +876,7 @@ function render() {
       wrappedText(
         'CLICK TO LOAD NEXT QUESTION',
         vw * 0.5,
-        centerY + 24,
+        centerY + 40,
         vw * 0.7,
         22,
         '#fff6d8',
