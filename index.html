@@ -208,7 +208,7 @@ const state = {
   shake:0, tick:0, clickableAnswers:[], questionPool:[], usedQuestions:new Set(), sessionUsedQuestions:new Set(),
   longSessionUsedQuestions:new Set(), gamesPlayed:0, loadingQuestions:false, sourceLabel:'DATABASE-HEAVY MIX',
   currentSource:'', pendingNextTimeout:null, roundId:0, cachedPool:[], cacheTime:0,
-  transition:false, transitionEnd:0, fatalError:'', connectivityIssue:false
+  transition:false, transitionEnd:0, fatalError:'', connectivityIssue:false, loadingStartedAt:0
 };
 
 const bgImg = new Image();
@@ -358,7 +358,10 @@ async function fetchWikiCurrentEventsBatch() {
 }
 
 async function refreshQuestionPool() {
-  if (state.loadingQuestions) return;
+  if (state.loadingQuestions) {
+    if (state.connectivityIssue) resetGame();
+    return;
+  }
   const cacheFresh = Date.now() - state.cacheTime < 5 * 60 * 1000;
   if (cacheFresh && state.cachedPool.length) {
     state.questionPool = buildBalancedQuestionPool(state.cachedPool.filter(q => {
@@ -376,6 +379,7 @@ async function refreshQuestionPool() {
   }
 
   state.loadingQuestions = true;
+  state.loadingStartedAt = Date.now();
   state.connectivityIssue = false;
   state.feedback = 'FETCHING LIVE QUESTIONS...';
   state.feedbackType = 'neutral';
@@ -427,6 +431,7 @@ async function refreshQuestionPool() {
     state.feedbackType = 'bad';
   }
   state.loadingQuestions = false;
+  state.loadingStartedAt = 0;
 }
 
 async function nextQuestion() {
@@ -927,7 +932,18 @@ function drawOverlay() {
   wrappedText('TAP TO START A NEW SHIFT', vw * 0.5, centerY + (isPhone ? 72 : 82), vw * 0.82, isPhone ? 20 : 24, '#f7eab8', actionSize, 'center');
 }
 
-function update(dt) { state.tick += dt; state.shake = Math.max(0, state.shake - dt); }
+function update(dt) {
+  state.tick += dt;
+  state.shake = Math.max(0, state.shake - dt);
+  if (state.loadingQuestions && state.loadingStartedAt && Date.now() - state.loadingStartedAt > Math.max(7000, CONFIG.requestTimeoutMs * 2)) {
+    state.loadingQuestions = false;
+    state.loadingStartedAt = 0;
+    state.questionPool = [];
+    state.connectivityIssue = true;
+    state.feedback = 'CONNECTIVITY ERROR. CHECK YOUR INTERNET AND TAP TO TRY AGAIN.';
+    state.feedbackType = 'bad';
+  }
+}
 function render() {
   const vw = canvas.clientWidth, vh = canvas.clientHeight;
   try {
