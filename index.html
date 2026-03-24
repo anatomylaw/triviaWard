@@ -47,6 +47,146 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 ctx.textBaseline = 'alphabetic';
 
+function resize() {
+  const isPhone = window.innerWidth <= 430;
+  const dpr = Math.min(window.devicePixelRatio || 1, isPhone ? 1.5 : 2);
+  const vw = Math.max(320, window.innerWidth);
+  const vh = Math.max(480, window.innerHeight);
+  canvas.width = Math.floor(vw * dpr);
+  canvas.height = Math.floor(vh * dpr);
+  canvas.style.width = vw + 'px';
+  canvas.style.height = vh + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (typeof layoutCache !== 'undefined') {
+    layoutCache.metricsKey = '';
+    layoutCache.metrics = null;
+    layoutCache.layoutKey = '';
+    layoutCache.layout = null;
+  }
+}
+resize();
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 120));
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+function shuffleArray(arr) {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+function decodeHTML(html) {
+  const txt = document.createElement('textarea');
+  txt.innerHTML = html;
+  return txt.value;
+}
+function normalizeQuestionKey(prompt, choices) {
+  return `${prompt}||${choices.join('|')}`.toUpperCase();
+}
+function questionLooksUsable(qText) {
+  const text = String(qText || '').trim();
+  return text.length >= 10 && text.length <= 170;
+}
+function answerAppearsInQuestion(questionText, answerText) {
+  const q = String(questionText || '').toLowerCase();
+  const a = String(answerText || '').toLowerCase().trim();
+  if (!a || a.length < 5) return false;
+  if (q.includes(a)) return true;
+  const words = a.split(/[^a-z0-9]+/i).filter(w => w.length >= 5);
+  if (words.length >= 2) {
+    let hits = 0;
+    for (const w of words) if (q.includes(w)) hits += 1;
+    if (hits >= Math.max(2, Math.ceil(words.length * 0.75))) return true;
+  }
+  return false;
+}
+function inferTopic(questionText, sourceTopic) {
+  if (sourceTopic) return String(sourceTopic);
+  const t = String(questionText || '').toLowerCase();
+  if (t.includes('king') || t.includes('queen') || t.includes('prince') || t.includes('royal')) return 'Royals';
+  if (t.includes('soccer') || t.includes('football') || t.includes('goal') || t.includes('fifa') || t.includes('league')) return 'Soccer';
+  if (t.includes('triangle') || t.includes('hexagon') || t.includes('geometry') || t.includes('angle')) return 'Geometry';
+  if (t.includes('river') || t.includes('capital') || t.includes('continent') || t.includes('ocean')) return 'Geography';
+  if (t.includes('god') || t.includes('myth') || t.includes('trojan') || t.includes('zeus')) return 'Mythology';
+  if (t.includes('paint') || t.includes('museum') || t.includes('artist') || t.includes('art')) return 'Art';
+  if (t.includes('novel') || t.includes('author') || t.includes('book') || t.includes('poem')) return 'Literature';
+  if (t.includes('election') || t.includes('parliament') || t.includes('president') || t.includes('prime minister')) return 'Politics';
+  if (t.includes('war') || t.includes('empire') || t.includes('revolution') || t.includes('ancient')) return 'History';
+  if (t.includes('headline') || t.includes('ceasefire') || t.includes('inflation') || t.includes('tariff')) return 'Current Events';
+  return 'Mixed';
+}
+function inferLevel(questionText, sourceDifficulty) {
+  if (sourceDifficulty) return String(sourceDifficulty).toLowerCase();
+  const len = String(questionText || '').length;
+  if (len < 55) return 'easy';
+  if (len < 100) return 'medium';
+  return 'hard';
+}
+function outlineText(text, x, y, fill = '#fff', size = 26, align = 'left') {
+  ctx.font = `${size}px Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`;
+  ctx.textAlign = align;
+  ctx.lineWidth = Math.max(2, size * 0.06);
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = fill;
+  ctx.fillText(text, x, y);
+}
+function wrappedText(text, x, y, maxWidth, lineHeight, fill, size, align = 'left') {
+  ctx.font = `${size}px Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`;
+  ctx.textAlign = align;
+  const words = String(text).split(' ');
+  let line = '';
+  const lines = [];
+  for (const word of words) {
+    const test = line ? line + ' ' + word : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  for (let i = 0; i < lines.length; i++) {
+    outlineText(lines[i], x, y + i * lineHeight, fill, size, align);
+  }
+}
+
+const statDefs = [
+  { key:'oxygen', label:'SATURATION', unit:'%', min:60, max:100, ideal:98, value:84, color:'#73d8ff' },
+  { key:'pressure', label:'BLOOD PRESSURE', unit:'', min:70, max:170, ideal:120, value:145, color:'#98e56c' },
+  { key:'temp', label:'TEMPERATURE', unit:'°F', min:94, max:106, ideal:98.6, value:101.7, color:'#ff8f61' },
+  { key:'pulse', label:'HEART RATE', unit:' BPM', min:35, max:170, ideal:72, value:118, color:'#f2c75b' }
+];
+const wikiPages = ['Greek_mythology','Zeus','Hades','Apollo','Athens','Africa','Europe','Brazil','Canberra','Nile','Triangle','Hexagon','Geometry','Politics','Prince_of_Wales','Buckingham_Palace','Association_football','FIFA_World_Cup','Premier_League','Vincent_van_Gogh','Leonardo_da_Vinci','Louvre','Ancient_Egypt','Ancient_Greece','Ancient_Rome','Renaissance','Cold_War','World_War_I','World_War_II','India','China','Japan','Australia','Canada','Argentina','Amazon_rainforest','Sahara','Andes','Himalayas','Plato','Aristotle','Socrates','Alexander_the_Great','Julius_Caesar','Cleopatra','Napoleon','Isaac_Newton','Albert_Einstein','Marie_Curie','Alan_Turing','Shakespeare','Homer','Jane_Austen','George_Orwell','Impressionism','Cubism','Baroque','Claude_Monet','Pablo_Picasso','Michelangelo','Football','Olympic_Games','Lionel_Messi','Cristiano_Ronaldo','Pele','Algebra','Calculus','Probability','Photosynthesis','DNA','Periodic_table','Solar_System','Mars','Jupiter','Milky_Way','Black_hole','Climate_change','Democracy','Republic','Monarchy','Parliament','Election','Inflation','Pharaoh','Pyramid','Sphinx','Minotaur','Odysseus','Achilles','Poseidon','Artemis','Machine_learning','Artificial_intelligence','Internet','GitHub','Python_(programming_language)','JavaScript','Coffee','Tea','Chocolate','Printing_press','Steam_engine','Telephone','Radio','GPS'];
+const githubSources = [
+  'https://raw.githubusercontent.com/uberspot/OpenTriviaQA/master/categories/general.json',
+  'https://raw.githubusercontent.com/briansunter/TriviaQuestions/master/questions.json',
+  'https://raw.githubusercontent.com/jgoralcz/trivia/master/questions.json',
+  'https://gist.githubusercontent.com/robertnsu/8ca09c7f73ec0b4eafa929d77a1a6793/raw'
+];
+const allowedCategories = [9,10,11,12,14,15,17,18,19,20,21,22,23,24,25];
+const state = {
+  score:0, streak:0, wrongCount:0, currentQuestion:null, correctAnswerText:'', stats:{},
+  feedback:'LOADING LIVE QUESTIONS...', feedbackType:'neutral', answered:false, gameOver:false, win:false,
+  shake:0, tick:0, clickableAnswers:[], questionPool:[], usedQuestions:new Set(), sessionUsedQuestions:new Set(),
+  longSessionUsedQuestions:new Set(), gamesPlayed:0, loadingQuestions:false, sourceLabel:'DATABASE-HEAVY MIX',
+  currentSource:'', pendingNextTimeout:null, roundId:0, cachedPool:[], cacheTime:0,
+  transition:false, transitionEnd:0, fatalError:''
+};
+const layoutCache = { metricsKey:'', metrics:null, layoutKey:'', layout:null };
+
 const bgImg = new Image();
 let bgLoaded = false;
 let bgFailed = false;
