@@ -47,6 +47,8 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 ctx.textBaseline = 'alphabetic';
 
+var layoutCache = { metricsKey:'', metrics:null, layoutKey:'', layout:null };
+
 function resize() {
   const isPhone = window.innerWidth <= 430;
   const dpr = Math.min(window.devicePixelRatio || 1, isPhone ? 1.5 : 2);
@@ -185,7 +187,6 @@ const state = {
   currentSource:'', pendingNextTimeout:null, roundId:0, cachedPool:[], cacheTime:0,
   transition:false, transitionEnd:0, fatalError:''
 };
-const layoutCache = { metricsKey:'', metrics:null, layoutKey:'', layout:null };
 
 const bgImg = new Image();
 let bgLoaded = false;
