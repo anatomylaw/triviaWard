@@ -43,20 +43,6 @@ const CONFIG = {
   requestTimeoutMs: 3500
 };
 
-const LOCAL_QUESTION_PACK = [
-  { q:'WHICH PLANET IS KNOWN AS THE RED PLANET?', choices:['Mars','Venus','Jupiter','Mercury'], answer:0, source:'Local Pack', topic:'Science', level:'easy' },
-  { q:'WHO WAS THE KING OF THE GODS IN GREEK MYTHOLOGY?', choices:['Zeus','Apollo','Hermes','Ares'], answer:0, source:'Local Pack', topic:'Mythology', level:'easy' },
-  { q:'WHAT IS THE CAPITAL OF CANADA?', choices:['Toronto','Ottawa','Vancouver','Montreal'], answer:1, source:'Local Pack', topic:'Geography', level:'easy' },
-  { q:'HOW MANY DEGREES ARE IN A TRIANGLE?', choices:['90','180','270','360'], answer:1, source:'Local Pack', topic:'Geometry', level:'easy' },
-  { q:'WHO PAINTED THE MONA LISA?', choices:['Michelangelo','Raphael','Leonardo da Vinci','Donatello'], answer:2, source:'Local Pack', topic:'Art', level:'easy' },
-  { q:'WHICH OCEAN IS THE LARGEST?', choices:['Atlantic','Indian','Arctic','Pacific'], answer:3, source:'Local Pack', topic:'Geography', level:'easy' },
-  { q:'WHO WROTE ROMEO AND JULIET?', choices:['Shakespeare','Dickens','Homer','Tolstoy'], answer:0, source:'Local Pack', topic:'Literature', level:'easy' },
-  { q:'WHICH COUNTRY WON THE FIRST FIFA WORLD CUP?', choices:['Brazil','Uruguay','Italy','Argentina'], answer:1, source:'Local Pack', topic:'Soccer', level:'medium' },
-  { q:'WHAT GAS DO PLANTS ABSORB FROM THE ATMOSPHERE?', choices:['Oxygen','Nitrogen','Carbon Dioxide','Hydrogen'], answer:2, source:'Local Pack', topic:'Science', level:'easy' },
-  { q:'WHICH ANCIENT WONDER STOOD AT GIZA?', choices:['Hanging Gardens','Great Pyramid','Colossus of Rhodes','Temple of Artemis'], answer:1, source:'Local Pack', topic:'History', level:'easy' },
-  { q:'WHAT IS THE CAPITAL OF AUSTRALIA?', choices:['Sydney','Melbourne','Canberra','Perth'], answer:2, source:'Local Pack', topic:'Geography', level:'easy' },
-  { q:'WHO WAS ODYSSEUS TRYING TO RETURN HOME TO?', choices:['Athens','Sparta','Ithaca','Troy'], answer:2, source:'Local Pack', topic:'Mythology', level:'medium' }
-];
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 ctx.textBaseline = 'alphabetic';
@@ -71,6 +57,10 @@ function resize() {
   canvas.style.width = vw + 'px';
   canvas.style.height = vh + 'px';
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  layoutCache.metricsKey = '';
+  layoutCache.metrics = null;
+  layoutCache.layoutKey = '';
+  layoutCache.layout = null;
 }
 resize();
 window.addEventListener('resize', resize);
@@ -372,7 +362,7 @@ async function refreshQuestionPool() {
     const [githubBatch, otdbBatch, triviaApiBatch, wikiBatch, currentBatch] = await Promise.allSettled([
       fetchGitHubTrivia(), fetchOpenTDBBatch(), fetchTriviaApi(), fetchWikipediaBatch(), fetchWikiCurrentEventsBatch()
     ]);
-    const combined = [...LOCAL_QUESTION_PACK, ...LOCAL_QUESTION_PACK.slice(0, 6)];
+    const combined = [];
     if (githubBatch.status === 'fulfilled') combined.push(...githubBatch.value, ...githubBatch.value.slice(0, 10));
     if (otdbBatch.status === 'fulfilled') combined.push(...otdbBatch.value, ...otdbBatch.value.slice(0, 10));
     if (triviaApiBatch.status === 'fulfilled') combined.push(...triviaApiBatch.value, ...triviaApiBatch.value.slice(0, 8));
@@ -457,6 +447,10 @@ async function resetGame() {
     clearTimeout(state.pendingNextTimeout);
     state.pendingNextTimeout = null;
   }
+  layoutCache.metricsKey = '';
+  layoutCache.metrics = null;
+  layoutCache.layoutKey = '';
+  layoutCache.layout = null;
   state.roundId += 1;
   state.score = 0;
   state.streak = 0;
@@ -558,6 +552,10 @@ function handlePointer(x, y) {
   if (state.loadingQuestions) return;
   if (state.transition && state.answered) {
     nextQuestion();
+    return;
+  }
+  if (!state.currentQuestion) {
+    resetGame();
     return;
   }
   for (const a of state.clickableAnswers) {
@@ -740,12 +738,10 @@ function drawQuestionPanel() {
   // true vertical centering for multi-line question
   const textLines = metrics.lines || 1;
   const textBlockH = textLines * qLine;
-  const questionCenterY = y + outerPad + (topBoxH - textBlockH) / 2 + qLine * 0.8;
+  const questionCenterY = y + outerPad + (topBoxH - textBlockH) / 2 + qLine * 0.74;
 
   if (state.loadingQuestions) {
     wrappedText('LOADING...', x + w / 2, questionCenterY, w - qPad * 2, qLine, '#f2e6b5', qFont, 'center');
-  } else if (state.currentQuestion) {
-    wrappedText(state.currentQuestion.prompt, x + w / 2, questionCenterY, w - qPad * 2, qLine, '#f2e6b5', qFont, 'center');
   } else if (state.currentQuestion) {
     wrappedText(state.currentQuestion.prompt, x + w / 2, questionCenterY, w - qPad * 2, qLine, '#f2e6b5', qFont, 'center');
   }
@@ -782,7 +778,7 @@ function drawQuestionPanel() {
     if (line) lines++;
 
     const textH = lines * answerLine;
-    const ayCentered = ay + (boxH - textH) / 2 + answerLine * 0.8;
+    const ayCentered = ay + (boxH - textH) / 2 + answerLine * 0.74;
 
     wrappedText(answerText, x + w / 2, ayCentered, w - qPad * 2, answerLine, '#fff6d8', answerFont, 'center');
 
@@ -865,15 +861,27 @@ function drawStatsPanel() {
 function drawMonitor() { /* hidden to avoid overlap */ }
 function drawOverlay() {
   if (!state.gameOver) return;
-  const vw = canvas.clientWidth, vh = canvas.clientHeight;
-  ctx.fillStyle = 'rgba(0,0,0,0.64)'; ctx.fillRect(0, 0, vw, vh);
-  const title = state.win ? 'NIGHT SHIFT COMPLETE' : 'CODE RED';
+  const vw = canvas.clientWidth;
+  const vh = canvas.clientHeight;
+  const isPhone = vw <= 430;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.64)';
+  ctx.fillRect(0, 0, vw, vh);
+
+  const title = state.win ? 'SHIFT END' : 'CODE RED';
   const subtitle = state.win ? 'YOU KEPT THE VITALS ABOVE THE EDGE.' : 'CALL A NURSE IMMEDIATELY.';
   const color = state.win ? '#8fe66f' : '#ff6262';
-  outlineText(title, vw / 2, vh / 2 - 30, color, 48, 'center');
-  outlineText(subtitle, vw / 2, vh / 2 + 18, '#fff1bf', 22, 'center');
-  outlineText(`FINAL SCORE ${state.score}`, vw / 2, vh / 2 + 58, '#fff', 26, 'center');
-  outlineText('TAP TO REVIVE PATIENT', vw / 2, vh / 2 + 96, '#f7eab8', 20, 'center');
+
+  const titleSize = isPhone ? 32 : 48;
+  const subtitleSize = isPhone ? 16 : 22;
+  const scoreSize = isPhone ? 20 : 26;
+  const actionSize = isPhone ? 16 : 20;
+  const centerY = vh * 0.5;
+
+  wrappedText(title, vw * 0.5, centerY - (isPhone ? 54 : 46), vw * 0.82, isPhone ? 30 : 42, color, titleSize, 'center');
+  wrappedText(subtitle, vw * 0.5, centerY - (isPhone ? 6 : 2), vw * 0.82, isPhone ? 20 : 26, '#fff1bf', subtitleSize, 'center');
+  wrappedText(`FINAL SCORE ${state.score}`, vw * 0.5, centerY + (isPhone ? 34 : 40), vw * 0.82, isPhone ? 22 : 28, '#fff', scoreSize, 'center');
+  wrappedText('TAP TO START A NEW SHIFT', vw * 0.5, centerY + (isPhone ? 72 : 82), vw * 0.82, isPhone ? 20 : 24, '#f7eab8', actionSize, 'center');
 }
 
 function update(dt) { state.tick += dt; state.shake = Math.max(0, state.shake - dt); }
@@ -900,7 +908,7 @@ function render() {
         vw * 0.5,
         centerY - 20,
         vw * 0.7,
-        26,
+        msgSize * 1.15,
         state.feedbackType === 'good' ? '#93e070' : '#ff7979',
         msgSize,
         'center'
@@ -912,7 +920,7 @@ function render() {
         vw * 0.5,
         centerY + 40,
         vw * 0.7,
-        22,
+        subSize * 1.2,
         '#fff6d8',
         subSize,
         'center'
