@@ -100,17 +100,40 @@ function questionLooksUsable(qText) {
   const text = String(qText || '').trim();
   return text.length >= 10 && text.length <= 170;
 }
+function normalizeTokens(text) {
+  return String(text || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter(w => w.length >= 3 && !/^[a-z]$/.test(w));
+}
 function answerAppearsInQuestion(questionText, answerText) {
   const q = String(questionText || '').toLowerCase();
   const a = String(answerText || '').toLowerCase().trim();
-  if (!a || a.length < 5) return false;
+  if (!a || a.length < 3) return false;
   if (q.includes(a)) return true;
-  const words = a.split(/[^a-z0-9]+/i).filter(w => w.length >= 5);
-  if (words.length >= 2) {
-    let hits = 0;
-    for (const w of words) if (q.includes(w)) hits += 1;
-    if (hits >= Math.max(2, Math.ceil(words.length * 0.75))) return true;
+
+  const qTokens = new Set(normalizeTokens(q));
+  const aTokens = normalizeTokens(a);
+  if (!aTokens.length) return false;
+
+  let hits = 0;
+  for (const token of aTokens) {
+    if (qTokens.has(token)) hits += 1;
   }
+
+  const ratio = hits / aTokens.length;
+  if (hits >= 2 && ratio >= 0.66) return true;
+
+  if (aTokens.length >= 2) {
+    const first = aTokens[0];
+    const last = aTokens[aTokens.length - 1];
+    if (qTokens.has(first) && qTokens.has(last)) return true;
+  }
+
   return false;
 }
 function inferTopic(questionText, sourceTopic) {
@@ -185,7 +208,7 @@ const state = {
   shake:0, tick:0, clickableAnswers:[], questionPool:[], usedQuestions:new Set(), sessionUsedQuestions:new Set(),
   longSessionUsedQuestions:new Set(), gamesPlayed:0, loadingQuestions:false, sourceLabel:'DATABASE-HEAVY MIX',
   currentSource:'', pendingNextTimeout:null, roundId:0, cachedPool:[], cacheTime:0,
-  transition:false, transitionEnd:0, fatalError:''
+  transition:false, transitionEnd:0, fatalError:'', connectivityIssue:false
 };
 
 const bgImg = new Image();
@@ -342,15 +365,18 @@ async function refreshQuestionPool() {
       const key = normalizeQuestionKey(q.q, q.choices);
       return !state.usedQuestions.has(key) && !state.sessionUsedQuestions.has(key) && !state.longSessionUsedQuestions.has(key);
     }));
+    state.connectivityIssue = false;
     state.sourceLabel = state.questionPool.length ? 'DATABASE-HEAVY MIX' : 'LIVE SOURCES UNAVAILABLE';
     if (!state.questionPool.length) {
-      state.feedback = 'NO LIVE QUESTIONS AVAILABLE. TAP TO TRY AGAIN.';
+      state.feedback = 'NO LIVE QUESTIONS AVAILABLE. CHECK YOUR CONNECTION AND TAP TO TRY AGAIN.';
       state.feedbackType = 'bad';
+      state.connectivityIssue = true;
     }
     return;
   }
 
   state.loadingQuestions = true;
+  state.connectivityIssue = false;
   state.feedback = 'FETCHING LIVE QUESTIONS...';
   state.feedbackType = 'neutral';
   try {
@@ -358,11 +384,12 @@ async function refreshQuestionPool() {
       fetchGitHubTrivia(), fetchOpenTDBBatch(), fetchTriviaApi(), fetchWikipediaBatch(), fetchWikiCurrentEventsBatch()
     ]);
     const combined = [];
-    if (githubBatch.status === 'fulfilled') combined.push(...githubBatch.value, ...githubBatch.value.slice(0, 10));
-    if (otdbBatch.status === 'fulfilled') combined.push(...otdbBatch.value, ...otdbBatch.value.slice(0, 10));
-    if (triviaApiBatch.status === 'fulfilled') combined.push(...triviaApiBatch.value, ...triviaApiBatch.value.slice(0, 8));
-    if (wikiBatch.status === 'fulfilled') combined.push(...wikiBatch.value.slice(0, 6));
-    if (currentBatch.status === 'fulfilled') combined.push(...currentBatch.value.slice(0, 4));
+    const fulfilledArrays = [];
+    if (githubBatch.status === 'fulfilled') { combined.push(...githubBatch.value, ...githubBatch.value.slice(0, 10)); fulfilledArrays.push(githubBatch.value); }
+    if (otdbBatch.status === 'fulfilled') { combined.push(...otdbBatch.value, ...otdbBatch.value.slice(0, 10)); fulfilledArrays.push(otdbBatch.value); }
+    if (triviaApiBatch.status === 'fulfilled') { combined.push(...triviaApiBatch.value, ...triviaApiBatch.value.slice(0, 8)); fulfilledArrays.push(triviaApiBatch.value); }
+    if (wikiBatch.status === 'fulfilled') { combined.push(...wikiBatch.value.slice(0, 6)); fulfilledArrays.push(wikiBatch.value); }
+    if (currentBatch.status === 'fulfilled') { combined.push(...currentBatch.value.slice(0, 4)); fulfilledArrays.push(currentBatch.value); }
 
     const deduped = [];
     const seen = new Set();
@@ -374,6 +401,8 @@ async function refreshQuestionPool() {
         deduped.push(q);
       }
     }
+
+    const anyRemoteQuestions = fulfilledArrays.some(arr => Array.isArray(arr) && arr.length > 0);
     state.cachedPool = deduped.slice();
     state.cacheTime = Date.now();
     state.questionPool = buildBalancedQuestionPool(deduped.filter(q => {
@@ -381,15 +410,20 @@ async function refreshQuestionPool() {
       return !state.usedQuestions.has(key) && !state.sessionUsedQuestions.has(key) && !state.longSessionUsedQuestions.has(key);
     }));
     state.sourceLabel = state.questionPool.length ? 'DATABASE-HEAVY MIX' : 'LIVE SOURCES UNAVAILABLE';
+
     if (!state.questionPool.length) {
-      state.feedback = 'NO LIVE QUESTIONS AVAILABLE. TAP TO TRY AGAIN.';
+      state.connectivityIssue = !anyRemoteQuestions || (typeof navigator !== 'undefined' && navigator.onLine === false);
+      state.feedback = state.connectivityIssue
+        ? 'CONNECTIVITY ERROR. CHECK YOUR INTERNET AND TAP TO TRY AGAIN.'
+        : 'NO VALID LIVE QUESTIONS AVAILABLE. TAP TO TRY AGAIN.';
       state.feedbackType = 'bad';
     }
   } catch (e) {
     console.error(e);
     state.questionPool = [];
     state.sourceLabel = 'LIVE SOURCES UNAVAILABLE';
-    state.feedback = 'NO LIVE QUESTIONS AVAILABLE. TAP TO TRY AGAIN.';
+    state.connectivityIssue = true;
+    state.feedback = 'CONNECTIVITY ERROR. CHECK YOUR INTERNET AND TAP TO TRY AGAIN.';
     state.feedbackType = 'bad';
   }
   state.loadingQuestions = false;
@@ -398,43 +432,57 @@ async function refreshQuestionPool() {
 async function nextQuestion() {
   if (state.loadingQuestions) return;
   state.transition = false;
-  if (state.questionPool.length === 0) await refreshQuestionPool();
-  if (state.questionPool.length === 0) {
-    state.currentQuestion = null;
-    state.feedback = 'NO LIVE QUESTIONS AVAILABLE. TAP TO TRY AGAIN.';
-    state.feedbackType = 'bad';
-    return;
+
+  let replenishAttempts = 0;
+  while (replenishAttempts < 2) {
+    if (state.questionPool.length === 0) await refreshQuestionPool();
+    if (state.questionPool.length === 0) {
+      state.currentQuestion = null;
+      state.feedback = state.connectivityIssue ? 'CONNECTIVITY ERROR. CHECK YOUR INTERNET AND TAP TO TRY AGAIN.' : 'NO LIVE QUESTIONS AVAILABLE. TAP TO TRY AGAIN.';
+      state.feedbackType = 'bad';
+      return;
+    }
+
+    let picked = null;
+    let safety = 0;
+    let filteredOut = 0;
+    while (!picked && safety < 500) {
+      safety += 1;
+      if (state.questionPool.length === 0) break;
+      const idx = Math.floor(Math.random() * state.questionPool.length);
+      const candidate = state.questionPool.splice(idx, 1)[0];
+      if (!candidate || !candidate.q || !Array.isArray(candidate.choices)) continue;
+      const key = normalizeQuestionKey(candidate.q, candidate.choices);
+      if (state.usedQuestions.has(key) || state.sessionUsedQuestions.has(key) || state.longSessionUsedQuestions.has(key)) continue;
+      const prepared = prepareQuestion(candidate);
+      if (!prepared) {
+        filteredOut += 1;
+        continue;
+      }
+      picked = prepared;
+    }
+
+    if (picked) {
+      state.usedQuestions.add(picked.key);
+      state.sessionUsedQuestions.add(picked.key);
+      state.longSessionUsedQuestions.add(picked.key);
+      state.currentQuestion = picked;
+      state.correctAnswerText = picked.answerText;
+      state.currentSource = picked.source;
+      state.answered = false;
+      state.feedback = '';
+      state.feedbackType = 'neutral';
+      return;
+    }
+
+    replenishAttempts += 1;
+    state.questionPool = [];
+    if (filteredOut === 0) break;
   }
 
-  let picked = null;
-  let safety = 0;
-  while (!picked && safety < 400) {
-    safety += 1;
-    if (state.questionPool.length === 0) break;
-    const idx = Math.floor(Math.random() * state.questionPool.length);
-    const candidate = state.questionPool.splice(idx, 1)[0];
-    if (!candidate || !candidate.q || !Array.isArray(candidate.choices)) continue;
-    const key = normalizeQuestionKey(candidate.q, candidate.choices);
-    if (state.usedQuestions.has(key) || state.sessionUsedQuestions.has(key) || state.longSessionUsedQuestions.has(key)) continue;
-    const prepared = prepareQuestion(candidate);
-    if (!prepared) continue;
-    picked = prepared;
-  }
-  if (!picked) {
-    state.currentQuestion = null;
-    state.feedback = 'NO VALID LIVE QUESTIONS AVAILABLE. TAP TO TRY AGAIN.';
-    state.feedbackType = 'bad';
-    return;
-  }
-  state.usedQuestions.add(picked.key);
-  state.sessionUsedQuestions.add(picked.key);
-  state.longSessionUsedQuestions.add(picked.key);
-  state.currentQuestion = picked;
-  state.correctAnswerText = picked.answerText;
-  state.currentSource = picked.source;
-  state.answered = false;
-  state.feedback = '';
-  state.feedbackType = 'neutral';
+  state.currentQuestion = null;
+  state.feedback = state.connectivityIssue ? 'CONNECTIVITY ERROR. CHECK YOUR INTERNET AND TAP TO TRY AGAIN.' : 'NO VALID LIVE QUESTIONS AVAILABLE. TAP TO TRY AGAIN.';
+  state.feedbackType = 'bad';
 }
 
 async function resetGame() {
@@ -893,29 +941,50 @@ function render() {
       const isPhone = canvas.clientWidth <= 430;
       const msgSize = isPhone ? 18 : 26;
       const subSize = isPhone ? 15 : 20;
-
-      // center block vertically
+      const msgLineHeight = msgSize * 1.15;
+      const subLineHeight = subSize * 1.2;
+      const maxWidth = vw * 0.7;
       const centerY = vh * 0.5;
 
-      // ANSWER TEXT (centered)
+      // Count feedback lines so the whole block shifts upward when the answer wraps.
+      ctx.font = `${msgSize}px Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`;
+      const words = String(state.feedback || '').split(' ');
+      let line = '';
+      let msgLines = 0;
+      for (const word of words) {
+        const test = line ? line + ' ' + word : word;
+        if (ctx.measureText(test).width > maxWidth && line) {
+          msgLines += 1;
+          line = word;
+        } else {
+          line = test;
+        }
+      }
+      if (line) msgLines += 1;
+      msgLines = Math.max(1, msgLines);
+
+      const extraLines = Math.max(0, msgLines - 2);
+      const shiftUp = extraLines * msgLineHeight;
+      const answerY = centerY - 20 - shiftUp;
+      const clickY = centerY + 40 - shiftUp;
+
       wrappedText(
         state.feedback,
         vw * 0.5,
-        centerY - 20,
-        vw * 0.7,
-        msgSize * 1.15,
+        answerY,
+        maxWidth,
+        msgLineHeight,
         state.feedbackType === 'good' ? '#93e070' : '#ff7979',
         msgSize,
         'center'
       );
 
-      // CLICK TEXT (closer + centered)
       wrappedText(
         'CLICK TO LOAD NEXT QUESTION',
         vw * 0.5,
-        centerY + 40,
-        vw * 0.7,
-        subSize * 1.2,
+        clickY,
+        maxWidth,
+        subLineHeight,
         '#fff6d8',
         subSize,
         'center'
@@ -952,7 +1021,7 @@ async function boot() {
   catch (e) {
     console.error(e);
     state.currentQuestion = null;
-    state.feedback = 'NO LIVE QUESTIONS AVAILABLE. TAP TO TRY AGAIN.';
+    state.feedback = state.connectivityIssue ? 'CONNECTIVITY ERROR. CHECK YOUR INTERNET AND TAP TO TRY AGAIN.' : 'NO LIVE QUESTIONS AVAILABLE. TAP TO TRY AGAIN.';
     state.feedbackType = 'bad';
     state.loadingQuestions = false;
   }
