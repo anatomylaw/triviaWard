@@ -30,13 +30,7 @@
 <body>
 <canvas id="game"></canvas>
 <script>
-/*
-  GitHub Pages ready:
-  - Put this file in your repo as index.html
-  - Put your image next to it as background.png
-  - Or change CONFIG.backgroundImage below
-  - Works as a static client-side app
-*/
+
 const CONFIG = {
   backgroundImage: './background.png',
   nextQuestionDelayMs: 1600,
@@ -219,14 +213,27 @@ bgImg.onerror = () => { bgFailed = true; };
 bgImg.src = CONFIG.backgroundImage;
 
 function prepareQuestion(question) {
-  const answerText = question.choices[question.answer];
+  if (!question || !question.q || !Array.isArray(question.choices)) return null;
+  if (question.choices.length < 4) return null;
+  if (typeof question.answer !== 'number' || question.answer < 0 || question.answer >= question.choices.length) return null;
+
+  const normalizedChoices = question.choices
+    .map(c => String(c || '').trim())
+    .filter(Boolean);
+  if (normalizedChoices.length < 4) return null;
+
+  const answerText = normalizedChoices[question.answer];
+  if (!answerText) return null;
   if (answerAppearsInQuestion(question.q, answerText)) return null;
-  const entries = question.choices.map((text, i) => ({ text, correct: i === question.answer }));
+
+  const entries = normalizedChoices.slice(0, 4).map((text, i) => ({ text, correct: i === question.answer }));
+  if (entries.filter(e => e.correct).length !== 1) return null;
+
   const shuffled = shuffleArray(entries);
   return {
-    prompt: question.q,
+    prompt: String(question.q).trim(),
     choices: shuffled,
-    key: normalizeQuestionKey(question.q, question.choices),
+    key: normalizeQuestionKey(String(question.q).trim(), normalizedChoices.slice(0, 4)),
     answerText,
     source: question.source || 'Mixed Source',
     topic: inferTopic(question.q, question.topic),
@@ -359,7 +366,6 @@ async function fetchWikiCurrentEventsBatch() {
 
 async function refreshQuestionPool() {
   if (state.loadingQuestions) {
-    if (state.connectivityIssue) resetGame();
     return;
   }
   const cacheFresh = Date.now() - state.cacheTime < 5 * 60 * 1000;
@@ -603,7 +609,7 @@ function handlePointer(x, y) {
     return;
   }
   if (!state.currentQuestion) {
-    resetGame();
+    if (!state.loadingQuestions) resetGame();
     return;
   }
   for (const a of state.clickableAnswers) {
@@ -783,7 +789,6 @@ function drawQuestionPanel() {
   ctx.fill();
   ctx.stroke();
 
-  // true vertical centering for multi-line question
   const textLines = metrics.lines || 1;
   const textBlockH = textLines * qLine;
   const questionCenterY = y + outerPad + (topBoxH - textBlockH) / 2 + qLine * 0.74;
@@ -792,10 +797,14 @@ function drawQuestionPanel() {
     wrappedText('LOADING...', x + w / 2, questionCenterY, w - qPad * 2, qLine, '#f2e6b5', qFont, 'center');
   } else if (state.currentQuestion) {
     wrappedText(state.currentQuestion.prompt, x + w / 2, questionCenterY, w - qPad * 2, qLine, '#f2e6b5', qFont, 'center');
+  } else {
+    wrappedText(state.feedback || 'TAP TO TRY AGAIN.', x + w / 2, questionCenterY, w - qPad * 2, qLine, '#f2e6b5', qFont, 'center');
   }
 
   state.clickableAnswers = [];
-  const choices = state.currentQuestion ? state.currentQuestion.choices : [];
+  const choices = state.currentQuestion && Array.isArray(state.currentQuestion.choices) ? state.currentQuestion.choices : [];
+  if (choices.length !== 4) return;
+
   for (let i = 0; i < 4; i++) {
     const ay = answersTop + i * (boxH + g);
     ctx.fillStyle = 'rgba(43,47,41,0.96)';
@@ -805,11 +814,11 @@ function drawQuestionPanel() {
     ctx.lineWidth = 3;
     ctx.stroke();
 
-    const answerText = choices[i] && choices[i].text ? choices[i].text : '...';
+    const answerText = choices[i] && choices[i].text ? choices[i].text : '';
     ctx.fillStyle = 'rgba(22,24,21,0.72)';
     roundRect(ctx, x + outerPad + 6, ay + 6, w - outerPad * 2 - 12, boxH - 12, 10);
     ctx.fill();
-    // improved vertical centering for answers (handles wrapping)
+
     const words = String(answerText).split(' ');
     let line = '';
     let lines = 0;
@@ -825,9 +834,8 @@ function drawQuestionPanel() {
     }
     if (line) lines++;
 
-    const textH = lines * answerLine;
+    const textH = Math.max(1, lines) * answerLine;
     const ayCentered = ay + (boxH - textH) / 2 + answerLine * 0.74;
-
     wrappedText(answerText, x + w / 2, ayCentered, w - qPad * 2, answerLine, '#fff6d8', answerFont, 'center');
 
     if (choices[i] && typeof choices[i].correct === 'boolean') {
@@ -1040,6 +1048,7 @@ async function boot() {
     state.feedback = state.connectivityIssue ? 'CONNECTIVITY ERROR. CHECK YOUR INTERNET AND TAP TO TRY AGAIN.' : 'NO LIVE QUESTIONS AVAILABLE. TAP TO TRY AGAIN.';
     state.feedbackType = 'bad';
     state.loadingQuestions = false;
+    state.loadingStartedAt = 0;
   }
 }
 boot();
